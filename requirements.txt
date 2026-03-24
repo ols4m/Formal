@@ -1,0 +1,4 @@
+playwright==1.57.0
+# optionally: playwright-stealth or other helpers
+# pip install -r requirements.txt
+# then: python -m playwright install
