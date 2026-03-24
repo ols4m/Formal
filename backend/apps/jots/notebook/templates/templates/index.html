@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The NoteBook</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #2a2a2a;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .resource-count {
+            color: #888;
+            font-size: 14px;
+        }
+
+        /* Search and Add Section */
+        .top-section {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .search-box {
+            flex: 1;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 16px 12px 40px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+
+        .search-box::before {
+            content: "🔍";
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            opacity: 0.5;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+
+        .add-box {
+            flex: 1;
+            display: flex;
+            gap: 8px;
+        }
+
+        .add-box input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+
+        .add-box input:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+
+        .add-box button {
+            padding: 12px 24px;
+            background: #4a9eff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .add-box button:hover {
+            background: #3a8eef;
+        }
+
+        /* Filter Sections */
+        .filters {
+            margin-bottom: 24px;
+        }
+
+        .filter-group {
+            margin-bottom: 16px;
+        }
+
+        .filter-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .filter-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .filter-tab {
+            padding: 6px 14px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .filter-tab:hover {
+            border-color: #4a9eff;
+        }
+
+        .filter-tab.active {
+            background: #4a9eff;
+            border-color: #4a9eff;
+            color: white;
+        }
+
+        .filter-tab.topic {
+            background: #1a1a2a;
+            border-color: #2a2a4a;
+        }
+
+        .filter-tab.topic.active {
+            background: #6a4aff;
+            border-color: #6a4aff;
+        }
+
+        .filter-tab.type {
+            background: #1a2a1a;
+            border-color: #2a4a2a;
+        }
+
+        .filter-tab.type.active {
+            background: #4aff6a;
+            border-color: #4aff6a;
+            color: #0f0f0f;
+        }
+
+        .clear-filters {
+            padding: 6px 14px;
+            background: transparent;
+            border: 1px dashed #444;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            color: #888;
+            transition: all 0.2s;
+        }
+
+        .clear-filters:hover {
+            border-color: #ff4a4a;
+            color: #ff4a4a;
+        }
+
+        /* Active Filters Display */
+        .active-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+            min-height: 28px;
+        }
+
+        .active-filter-tag {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: #2a2a2a;
+            border-radius: 12px;
+            font-size: 11px;
+        }
+
+        .active-filter-tag .remove {
+            cursor: pointer;
+            opacity: 0.6;
+        }
+
+        .active-filter-tag .remove:hover {
+            opacity: 1;
+        }
+
+        .results-info {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 16px;
+        }
+
+        /* Resources Grid */
+        .resources-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .resource-card {
+            background: #1a1a1a;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .resource-card.hidden {
+            display: none;
+        }
+
+        .resource-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+
+        .resource-thumbnail {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            background: #2a2a2a;
+        }
+
+        .resource-content {
+            padding: 14px;
+        }
+
+        .resource-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .resource-tag {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: #2a2a4a;
+            color: #a0a0ff;
+        }
+
+        .resource-tag.platform {
+            background: #1a3a4a;
+            color: #4ac0ff;
+        }
+
+        .resource-tag.type-tag {
+            background: #1a3a2a;
+            color: #4affa0;
+        }
+
+        .resource-title {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .resource-title a {
+            color: #e0e0e0;
+            text-decoration: none;
+        }
+
+        .resource-title a:hover {
+            color: #4a9eff;
+        }
+
+        .resource-description {
+            font-size: 12px;
+            color: #888;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .resource-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .resource-platform {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .resource-delete {
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .resource-delete:hover {
+            background: #ff4a4a;
+            color: white;
+        }
+
+        /* Note Card Style */
+        .resource-card.note-card {
+            background: linear-gradient(135deg, #2a2a1a 0%, #1a1a1a 100%);
+        }
+
+        .resource-card.note-card .resource-description {
+            -webkit-line-clamp: 4;
+            font-size: 13px;
+            color: #ccc;
+        }
+
+        /* Empty State */
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 8px;
+            color: #888;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            padding: 12px 20px;
+            border-radius: 8px;
+            display: none;
+            animation: slideIn 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.success { border-color: #4aff9e; }
+        .toast.error { border-color: #ff4a4a; }
+
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Edit button */
+        .resource-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .resource-edit {
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .resource-edit:hover {
+            background: #4a9eff;
+            color: white;
+        }
+
+        /* Clickable topic tags */
+        .resource-tag.editable {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .resource-tag.editable:hover {
+            background: #4a4a8a;
+            transform: scale(1.05);
+        }
+
+        .resource-tag.manual {
+            border: 1px solid #6a4aff;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal h3 {
+            margin-bottom: 16px;
+            font-size: 18px;
+        }
+
+        .modal-topics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .modal-topic {
+            padding: 8px 16px;
+            background: #2a2a2a;
+            border: 2px solid #2a2a2a;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+
+        .modal-topic:hover {
+            border-color: #4a9eff;
+        }
+
+        .modal-topic.selected {
+            background: #6a4aff;
+            border-color: #6a4aff;
+            color: white;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .modal-btn.cancel {
+            background: #333;
+            color: #aaa;
+        }
+
+        .modal-btn.save {
+            background: #4a9eff;
+            color: white;
+        }
+
+        .modal-btn:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>The NoteBook</h1>
+            <span class="resource-count" id="resourceCount">{{ resources|length }} resources</span>
+        </header>
+
+        <div class="top-section">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search resources..." autocomplete="off">
+            </div>
+            <form class="add-box" id="addForm">
+                <input type="text" id="urlInput" placeholder="Paste URL or type a note..." autocomplete="off">
+                <button type="submit">Add</button>
+            </form>
+        </div>
+
+        <div class="filters">
+            <!-- Topics -->
+            <div class="filter-group">
+                <div class="filter-label">Topics</div>
+                <div class="filter-tabs" id="topicTabs">
+                    {% for topic in filters.topics %}
+                    <div class="filter-tab topic" data-filter="topic" data-value="{{ topic }}">{{ topic }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Platforms -->
+            <div class="filter-group">
+                <div class="filter-label">Platforms</div>
+                <div class="filter-tabs" id="platformTabs">
+                    {% for platform in filters.platforms %}
+                    <div class="filter-tab" data-filter="platform" data-value="{{ platform }}">{{ platform }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Types -->
+            <div class="filter-group">
+                <div class="filter-label">Types</div>
+                <div class="filter-tabs" id="typeTabs">
+                    {% for type in filters.types %}
+                    <div class="filter-tab type" data-filter="type" data-value="{{ type }}">{{ type }}</div>
+                    {% endfor %}
+                    <button class="clear-filters" id="clearFilters">Clear All</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-info" id="resultsInfo"></div>
+
+        <div class="resources-grid" id="resourcesGrid">
+            {% if resources %}
+                {% for r in resources %}
+                <div class="resource-card {% if r.type == 'note' %}note-card{% endif %}"
+                     data-id="{{ r.id }}"
+                     data-platform="{{ r.platform_label }}"
+                     data-type="{{ r.type_label }}"
+                     data-topics="{{ r.topics|join(',') }}"
+                     data-title="{{ r.title|lower }}"
+                     data-description="{{ r.description|lower if r.description else '' }}">
+                    {% if r.thumbnail %}
+                    <img class="resource-thumbnail" src="{{ r.thumbnail }}" alt="" onerror="this.style.display='none'">
+                    {% endif %}
+                    <div class="resource-content">
+                        <div class="resource-tags" onclick="openEditModal({{ r.id }}, '{{ r.topics|join(',') }}')" style="cursor: pointer;" title="Click to edit topics">
+                            <span class="resource-tag platform">{{ r.platform_label }}</span>
+                            <span class="resource-tag type-tag">{{ r.type_label }}</span>
+                            {% for topic in r.topics %}
+                            <span class="resource-tag editable {% if r.topics_manual %}manual{% endif %}">{{ topic }}</span>
+                            {% endfor %}
+                        </div>
+                        <div class="resource-title">
+                            {% if r.url %}
+                            <a href="{{ r.url }}" target="_blank">{{ r.title }}</a>
+                            {% else %}
+                            {{ r.title }}
+                            {% endif %}
+                        </div>
+                        {% if r.description %}
+                        <div class="resource-description">{{ r.description }}</div>
+                        {% endif %}
+                        <div class="resource-footer">
+                            <span class="resource-platform">{{ r.platform }}</span>
+                            <div class="resource-actions">
+                                <button class="resource-edit" onclick="openEditModal({{ r.id }}, '{{ r.topics|join(',') }}')">Edit</button>
+                                <button class="resource-delete" onclick="deleteResource({{ r.id }})">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <h3>No resources yet</h3>
+                    <p>Paste a URL above to add your first resource</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Edit Topics Modal -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal">
+            <h3>Edit Topics</h3>
+            <p style="color: #888; font-size: 13px; margin-bottom: 16px;">Click topics to select/deselect. Changes will override auto-detection.</p>
+            <div class="modal-topics" id="modalTopics"></div>
+            <div class="modal-actions">
+                <button class="modal-btn cancel" onclick="closeEditModal()">Cancel</button>
+                <button class="modal-btn save" onclick="saveTopics()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // All available topics
+        const ALL_TOPICS = {{ filters.topics | tojson | safe }};
+        const TOPIC_OPTIONS = [
+            "Coding", "Finance", "Math", "Science", "Sports", "Gaming", "Music",
+            "Health", "Food", "Travel", "Entertainment", "Design", "Productivity",
+            "AI & ML", "Business", "Education", "Robotics", "Motivation", "News",
+            "Fashion", "Art", "General"
+        ];
+
+        // Modal state
+        let editingResourceId = null;
+        let selectedTopics = new Set();
+        // State
+        const activeFilters = {
+            topic: new Set(),
+            platform: new Set(),
+            type: new Set()
+        };
+        let searchQuery = '';
+
+        // Elements
+        const cards = document.querySelectorAll('.resource-card');
+        const filterTabs = document.querySelectorAll('.filter-tab');
+        const searchInput = document.getElementById('searchInput');
+        const resultsInfo = document.getElementById('resultsInfo');
+        const clearFiltersBtn = document.getElementById('clearFilters');
+
+        // Filter tab click - multi-select
+        filterTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const filterType = tab.dataset.filter;
+                const value = tab.dataset.value;
+
+                if (activeFilters[filterType].has(value)) {
+                    activeFilters[filterType].delete(value);
+                    tab.classList.remove('active');
+                } else {
+                    activeFilters[filterType].add(value);
+                    tab.classList.add('active');
+                }
+
+                applyFilters();
+            });
+        });
+
+        // Search input
+        searchInput.addEventListener('input', (e) => {
+            searchQuery = e.target.value.toLowerCase().trim();
+            applyFilters();
+        });
+
+        // Clear all filters
+        clearFiltersBtn.addEventListener('click', () => {
+            activeFilters.topic.clear();
+            activeFilters.platform.clear();
+            activeFilters.type.clear();
+            searchQuery = '';
+            searchInput.value = '';
+
+            filterTabs.forEach(tab => tab.classList.remove('active'));
+            applyFilters();
+        });
+
+        // Apply all filters
+        function applyFilters() {
+            let visibleCount = 0;
+            const totalCount = cards.length;
+
+            cards.forEach(card => {
+                const cardTopics = card.dataset.topics.split(',');
+                const cardPlatform = card.dataset.platform;
+                const cardType = card.dataset.type;
+                const cardTitle = card.dataset.title;
+                const cardDesc = card.dataset.description;
+
+                // Check topic filter (OR within topics)
+                const topicMatch = activeFilters.topic.size === 0 ||
+                    [...activeFilters.topic].some(t => cardTopics.includes(t));
+
+                // Check platform filter (OR within platforms)
+                const platformMatch = activeFilters.platform.size === 0 ||
+                    activeFilters.platform.has(cardPlatform);
+
+                // Check type filter (OR within types)
+                const typeMatch = activeFilters.type.size === 0 ||
+                    activeFilters.type.has(cardType);
+
+                // Check search query
+                const searchMatch = !searchQuery ||
+                    cardTitle.includes(searchQuery) ||
+                    cardDesc.includes(searchQuery);
+
+                // All filters must match (AND between filter groups)
+                const visible = topicMatch && platformMatch && typeMatch && searchMatch;
+
+                card.classList.toggle('hidden', !visible);
+                if (visible) visibleCount++;
+            });
+
+            // Update results info
+            const hasFilters = activeFilters.topic.size > 0 ||
+                              activeFilters.platform.size > 0 ||
+                              activeFilters.type.size > 0 ||
+                              searchQuery;
+
+            if (hasFilters) {
+                resultsInfo.textContent = `Showing ${visibleCount} of ${totalCount} resources`;
+            } else {
+                resultsInfo.textContent = '';
+            }
+        }
+
+        // Add resource
+        const addForm = document.getElementById('addForm');
+        const urlInput = document.getElementById('urlInput');
+
+        addForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const value = urlInput.value.trim();
+            if (!value) return;
+
+            const isUrl = value.startsWith('http') || value.includes('.');
+            const body = isUrl ? { url: value } : { note: value };
+
+            try {
+                const res = await fetch('/api/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showToast('Resource added!', 'success');
+                    urlInput.value = '';
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    showToast(data.error || 'Failed to add', 'error');
+                }
+            } catch (err) {
+                showToast('Error adding resource', 'error');
+            }
+        });
+
+        // Delete resource
+        async function deleteResource(id) {
+            if (!confirm('Delete this resource?')) return;
+
+            try {
+                const res = await fetch(`/api/delete/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+
+                if (data.success) {
+                    document.querySelector(`[data-id="${id}"]`).remove();
+                    showToast('Resource deleted', 'success');
+                } else {
+                    showToast('Failed to delete', 'error');
+                }
+            } catch (err) {
+                showToast('Error deleting resource', 'error');
+            }
+        }
+
+        // Toast notification
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+
+        // Open edit modal
+        function openEditModal(resourceId, currentTopics) {
+            editingResourceId = resourceId;
+            selectedTopics = new Set(currentTopics ? currentTopics.split(',').filter(t => t) : []);
+
+            const modalTopics = document.getElementById('modalTopics');
+            modalTopics.innerHTML = '';
+
+            TOPIC_OPTIONS.forEach(topic => {
+                const div = document.createElement('div');
+                div.className = 'modal-topic' + (selectedTopics.has(topic) ? ' selected' : '');
+                div.textContent = topic;
+                div.onclick = () => {
+                    if (selectedTopics.has(topic)) {
+                        selectedTopics.delete(topic);
+                        div.classList.remove('selected');
+                    } else {
+                        selectedTopics.add(topic);
+                        div.classList.add('selected');
+                    }
+                };
+                modalTopics.appendChild(div);
+            });
+
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        // Close edit modal
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('active');
+            editingResourceId = null;
+            selectedTopics.clear();
+        }
+
+        // Save topics
+        async function saveTopics() {
+            if (!editingResourceId) return;
+
+            const topics = Array.from(selectedTopics);
+            if (topics.length === 0) {
+                topics.push('General');
+            }
+
+            try {
+                const res = await fetch(`/api/topics/${editingResourceId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topics })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showToast('Topics updated!', 'success');
+                    closeEditModal();
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    showToast('Failed to update topics', 'error');
+                }
+            } catch (err) {
+                showToast('Error updating topics', 'error');
+            }
+        }
+
+        // Close modal on overlay click
+        document.getElementById('editModal').addEventListener('click', (e) => {
+            if (e.target.id === 'editModal') {
+                closeEditModal();
+            }
+        });
+    </script>
+</body>
+</html>
