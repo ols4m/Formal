@@ -9,6 +9,73 @@ import sys
 import json
 import re
 from datetime import datetime
+from pathlib import Path
+
+# Allow importing from backend/core regardless of CWD
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from core.db import get_db, init_db
+
+SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
+
+
+async def save_screenshot(page, label: str):
+    """Save a screenshot for visual inspection in VSCode."""
+    try:
+        SCREENSHOTS_DIR.mkdir(exist_ok=True)
+        ts = datetime.utcnow().strftime("%H%M%S")
+        path = SCREENSHOTS_DIR / f"{ts}_{label}.png"
+        await page.screenshot(path=str(path), full_page=False)
+        print(f"📸 Screenshot saved → apps/gradebook/screenshots/{path.name}")
+    except Exception as e:
+        print(f"⚠️  Screenshot failed: {e}")
+
+
+async def get_grade_column_labels(page: Page) -> list:
+    """
+    Detect grade column labels by matching table headers to columns that have
+    a.bold grade links, using JavaScript for reliable colspan-aware DOM traversal.
+    Returns labels like ['Q1', 'Q2', 'F2', 'Q3', 'F3', 'Y1'] — one entry per grade link.
+    """
+    try:
+        labels = await page.evaluate("""
+            () => {
+                const pat = /^[QqOoFfSsYyEe]\\d$/;
+
+                // Find which td-column indices have a.bold in the first data row
+                const firstRow = document.querySelector('tbody tr[id^="ccid_"]');
+                if (!firstRow) return [];
+                const tds = Array.from(firstRow.querySelectorAll('td'));
+                const activeCols = tds.reduce((acc, td, idx) => {
+                    if (td.querySelector('a.bold')) acc.push(idx);
+                    return acc;
+                }, []);
+                if (activeCols.length === 0) return [];
+
+                // Build a flat header array expanding colspan
+                const headerRow = document.querySelector('thead tr:last-child') ||
+                                  document.querySelector('thead tr');
+                if (!headerRow) return activeCols.map((_, i) => 'G' + (i + 1));
+
+                const flat = [];
+                for (const th of headerRow.querySelectorAll('th, td')) {
+                    const span = parseInt(th.getAttribute('colspan') || '1', 10);
+                    const t = (th.innerText || th.textContent || '').trim().replace(/\\s+/g, ' ');
+                    for (let i = 0; i < span; i++) flat.push(t);
+                }
+
+                // Map each active column index to its header label
+                return activeCols.map((col, i) => {
+                    const t = col < flat.length ? flat[col] : '';
+                    return pat.test(t) ? t.toUpperCase() : 'G' + (i + 1);
+                });
+            }
+        """)
+        if labels:
+            print(f"📋 Detected grade columns: {labels}")
+        return labels or []
+    except Exception as e:
+        print(f"⚠️  Column label detection failed: {e}")
+        return []
 
 
 # PowerSchool URL - Uncommon Schools
@@ -118,11 +185,10 @@ async def login_with_google_sso(page: Page, email: str, username: str, password:
         # ============================================
         print(" Checking for identity verification...")
         try:
-            # Look for Continue/Verify buttons with short timeout
-            buttons = login_page.locator('button').all()
+            buttons = login_page.locator('button')
             if await buttons.count() > 0:
                 print("✓ Clicking verification continue button...")
-                await buttons[0].click()
+                await buttons.nth(0).click()
         except Exception as e:
             print(f"  No verification button found (this is normal): {e}")
         
@@ -175,10 +241,11 @@ def normalize_grade(raw: str):
 
 async def scrape_grades(page: Page) -> list:
     """
-    Scrape PowerSchool grade rows and extract course name and normalized Q1/O2 grades.
+    Scrape PowerSchool grade rows and extract course name and all quarter grades.
+    Dynamically detects column labels (Q1, Q2, Q3, Q4, Y1, etc.) from the table header.
 
     Returns:
-        list of dicts: [{"course": "Course Name", "grades": {"Q1": {...}, "O2": {...}}}, ...]
+        list of dicts: [{"course": "...", "grades": {"Q1": {...}, "Q3": {...}, "Y1": {...}}}, ...]
     """
     print("🔎 Waiting for grades table...")
     try:
@@ -186,6 +253,9 @@ async def scrape_grades(page: Page) -> list:
     except Exception as e:
         print(f"❌ Grades table not found: {e}")
         return []
+
+    # Detect grade column labels from the table header
+    grade_labels = await get_grade_column_labels(page)
 
     rows = page.locator('tbody tr[id^="ccid_"]')
     count = await rows.count()
@@ -199,80 +269,35 @@ async def scrape_grades(page: Page) -> list:
         try:
             course_raw = (await row.locator('td.table-element-text-align-start').inner_text()).strip()
             course = course_raw.splitlines()[0].strip()
-            # Determine course type (AP vs Regular) — AP classes start with "AP"
             course_type = "AP" if course[:2].upper() == "AP" else "Regular"
         except Exception as e:
             print(f"⚠️  Couldn't read course name for row {i}: {e}")
             continue
 
-        # Prefer grade links: the grades are stored in <a class="bold"> inside <td>
         grades_links = row.locator('td a.bold')
         gl_count = await grades_links.count()
-        q1_norm = None
-        o2_norm = None
-        y1_norm = None
+        grades_dict = {}
 
-        if gl_count >= 2:
-            # Best case: inner_text returns two lines: letter and numeric
+        # Read every grade link and label it using detected column headers
+        for k in range(gl_count):
+            label = grade_labels[k] if k < len(grade_labels) else f"G{k + 1}"
             try:
-                raw_q1 = (await grades_links.nth(0).inner_text()).strip()
-                parts = [p.strip() for p in raw_q1.splitlines() if p.strip()]
+                raw = (await grades_links.nth(k).inner_text()).strip()
+                parts = [p.strip() for p in raw.splitlines() if p.strip()]
                 if len(parts) >= 2:
-                    q1_norm = {"letter": parts[0], "numeric": int(parts[-1])}
-                else:
-                    q1_norm = normalize_grade(" ".join(parts))
-            except Exception as e:
-                print(f"⚠️  Error parsing Q1 from a.bold for {course}: {e}")
-
-            try:
-                raw_o2 = (await grades_links.nth(1).inner_text()).strip()
-                parts = [p.strip() for p in raw_o2.splitlines() if p.strip()]
-                if len(parts) >= 2:
-                    o2_norm = {"letter": parts[0], "numeric": int(parts[-1])}
-                else:
-                    o2_norm = normalize_grade(" ".join(parts))
-            except Exception as e:
-                print(f"⚠️  Error parsing O2 from a.bold for {course}: {e}")
-
-        # Try direct Y1 from the third grade link if present
-        if y1_norm is None and gl_count >= 3:
-            try:
-                raw_y1 = (await grades_links.nth(2).inner_text()).strip()
-                parts = [p.strip() for p in raw_y1.splitlines() if p.strip()]
-                if len(parts) >= 2:
-                    y1_norm = {"letter": parts[0], "numeric": int(parts[-1])}
-                else:
-                    y1_norm = normalize_grade(" ".join(parts))
-            except Exception as e:
-                print(f"⚠️  Error parsing Y1 from a.bold[n=2] for {course}: {e}")
-
-        # Fallback: try to extract Y1 from the last <td> in the row (best-effort)
-        if y1_norm is None:
-            try:
-                tds = row.locator('td')
-                td_count = await tds.count()
-                if td_count:
-                    last_td = tds.nth(td_count - 1)
-                    # Prefer a.link if present
                     try:
-                        if await last_td.locator('a.bold').count() > 0:
-                            raw_y1 = (await last_td.locator('a.bold').nth(0).inner_text()).strip()
-                        else:
-                            aria = await last_td.get_attribute('aria-label')
-                            raw_y1 = aria.strip() if aria and re.search(r'\d', aria) else (await last_td.inner_text()).strip()
-                    except Exception:
-                        raw_y1 = (await last_td.inner_text()).strip()
-
-                    parts = [p.strip() for p in raw_y1.splitlines() if p.strip()]
-                    if len(parts) >= 2:
-                        y1_norm = {"letter": parts[0], "numeric": int(parts[-1])}
-                    else:
-                        y1_norm = normalize_grade(" ".join(parts))
+                        norm = {"letter": parts[0], "numeric": int(parts[-1])}
+                    except ValueError:
+                        norm = normalize_grade(" ".join(parts))
+                else:
+                    norm = normalize_grade(" ".join(parts))
+                if norm:
+                    grades_dict[label] = norm
             except Exception as e:
-                print(f"⚠️  Error parsing Y1 for {course}: {e}")
+                print(f"⚠️  Error parsing {label} for {course}: {e}")
 
-        # Fallback: use ARIA or cell text to find numeric grade if any approach fails
-        if o2_norm is None or y1_norm is None:
+        # ARIA fallback: if grade links yielded nothing, scan td[role=cell] aria-labels
+        if not grades_dict:
             grade_cells = row.locator('td[role="cell"]')
             gcount = await grade_cells.count()
             grade_texts = []
@@ -282,45 +307,42 @@ async def scrape_grades(page: Page) -> list:
                     aria = await cell.get_attribute('aria-label')
                 except Exception:
                     aria = None
-
                 try:
                     text = (aria or (await cell.inner_text() or '')).strip()
                 except Exception:
                     text = aria or ''
-
                 if text and re.search(r'\d', text):
                     grade_texts.append(text)
 
-            q1_norm = q1_norm or (normalize_grade(grade_texts[0]) if len(grade_texts) >= 1 else None)
-            o2_norm = o2_norm or (normalize_grade(grade_texts[1]) if len(grade_texts) >= 2 else None)
-            # Prefer the positional 3rd numeric grade for Y1, else fallback to the last numeric value
-            if len(grade_texts) >= 3:
-                y1_norm = y1_norm or normalize_grade(grade_texts[2])
-            else:
-                y1_norm = y1_norm or (normalize_grade(grade_texts[-1]) if len(grade_texts) >= 1 else None)
+            for k, text in enumerate(grade_texts):
+                norm = normalize_grade(text)
+                if norm:
+                    label = grade_labels[k] if k < len(grade_labels) else f"G{k + 1}"
+                    grades_dict[label] = norm
 
-        if o2_norm is None:
-            print(f"⚠️  Skipping {course!r}: O2 grade not found or couldn't parse (found link_count={gl_count})")
+        if not grades_dict:
+            print(f"⚠️  Skipping {course!r}: no grades found (link_count={gl_count})")
             continue
 
         results.append({
             "course": course,
             "type": course_type,
-            "grades": {"Q1": q1_norm, "O2": o2_norm, "Y1": y1_norm}
+            "grades": grades_dict,
         })
 
     return results
 
 
-async def scrape_q2_assignments(page: Page) -> list:
+async def scrape_current_quarter_assignments(page: Page, grade_labels: list) -> list:
     """
-    Click into each course's O2/Q2 detail link and scrape assignment-level data.
+    Click into each course's CURRENT quarter detail link and scrape assignment-level data.
+    Automatically detects the latest active quarter from the detected grade column labels.
 
     Returns a list of dicts:
     [
       {
         "course": "AP English",
-        "quarter": "Q2",
+        "quarter": "Q3",
         "letter_grade": "B-",
         "numeric_grade": 80,
         "assignments": [ {name, earned, possible, percent, category}, ... ]
@@ -328,7 +350,18 @@ async def scrape_q2_assignments(page: Page) -> list:
       ...
     ]
     """
-    print("🔎 Scraping assignment details for Q2 (O2)...")
+    # Find the last Q/O column (current quarter) — skip Y1/E1/S1 year-summary labels
+    quarter_cols = [
+        (i, lbl) for i, lbl in enumerate(grade_labels)
+        if re.match(r'^[QqOo]\d$', lbl)
+    ]
+    if quarter_cols:
+        current_idx, current_label = quarter_cols[-1]
+    else:
+        # Fallback: assume 2nd link = current quarter (old Q2 behavior)
+        current_idx, current_label = 1, "Q2"
+
+    print(f"🔎 Scraping assignment details for {current_label} (link index {current_idx})...")
     try:
         await page.wait_for_selector('tbody tr[id^="ccid_"]', timeout=15000)
     except Exception as e:
@@ -342,7 +375,6 @@ async def scrape_q2_assignments(page: Page) -> list:
     for i in range(count):
         row = rows.nth(i)
 
-        # Course name
         try:
             course_raw = (await row.locator('td.table-element-text-align-start').inner_text()).strip()
             course = course_raw.splitlines()[0].strip()
@@ -350,48 +382,42 @@ async def scrape_q2_assignments(page: Page) -> list:
             print(f"⚠️  Couldn't read course name for detail row {i}: {e}")
             continue
 
-        # Find the O2/Q2 grade link (2nd bold link)
         grades_links = row.locator('td a.bold')
-        if await grades_links.count() < 2:
-            print(f"⚠️  No O2 link for {course}, skipping detail scrape")
+        gl_count = await grades_links.count()
+        if gl_count <= current_idx:
+            print(f"⚠️  No {current_label} link for {course} (only {gl_count} links), skipping")
             continue
 
-        # Get letter and numeric grade from the link text
         try:
-            raw_o2 = (await grades_links.nth(1).inner_text()).strip()
-            parts = [p.strip() for p in raw_o2.splitlines() if p.strip()]
+            raw = (await grades_links.nth(current_idx).inner_text()).strip()
+            parts = [p.strip() for p in raw.splitlines() if p.strip()]
             letter = parts[0] if parts else None
-            numeric = int(parts[-1]) if len(parts) >= 1 and re.search(r'\d', parts[-1]) else None
+            numeric = int(parts[-1]) if parts and re.search(r'\d', parts[-1]) else None
         except Exception as e:
-            print(f"⚠️  Couldn't parse O2 grade for {course}: {e}")
+            print(f"⚠️  Couldn't parse {current_label} grade for {course}: {e}")
             letter = None
             numeric = None
 
-        # Click into the detail page (handle same-tab navigation or popup)
         detail_page = None
         try:
-            # Prefer navigation in same tab
             try:
                 async with page.expect_navigation(timeout=7000):
-                    await grades_links.nth(1).click()
+                    await grades_links.nth(current_idx).click()
                 detail_page = page
             except Exception:
-                # Maybe opens a popup
                 try:
                     async with page.context.expect_page(timeout=7000) as popup_info:
-                        await grades_links.nth(1).click()
+                        await grades_links.nth(current_idx).click()
                     detail_page = await popup_info.value
                     await detail_page.wait_for_load_state('networkidle')
                 except Exception:
-                    # Fallback: click and wait for networkidle
-                    await grades_links.nth(1).click()
+                    await grades_links.nth(current_idx).click()
                     await page.wait_for_load_state('networkidle')
                     detail_page = page
         except Exception as e:
-            print(f"⚠️  Clicking into O2 for {course} failed: {e}")
+            print(f"⚠️  Clicking into {current_label} for {course} failed: {e}")
             continue
 
-        # Scrape assignments on detail_page using the score table
         assignments = []
         try:
             await detail_page.wait_for_selector('table#scoreTable tbody', timeout=7000)
@@ -400,16 +426,13 @@ async def scrape_q2_assignments(page: Page) -> list:
             for j in range(ar_count):
                 ar = assign_rows.nth(j)
 
-                # If we hit the footer row that says "Assignment Score Or Flag Last Updated" stop early
                 try:
                     row_text = (await ar.inner_text() or '').strip()
                 except Exception:
                     row_text = ''
                 if 'Assignment Score Or Flag Last Updated' in row_text:
-                    print(f"ℹ️ Found footer row for {course}; ending assignment scrape for this class")
                     break
 
-                # Due date, category, name
                 try:
                     due = (await ar.locator('td').nth(0).inner_text()).strip()
                 except Exception:
@@ -417,7 +440,6 @@ async def scrape_q2_assignments(page: Page) -> list:
 
                 try:
                     cat = (await ar.locator('td.categorycol').inner_text()).strip()
-                    # category might include extra whitespace
                     cat = ' '.join(cat.split()) if cat else None
                 except Exception:
                     cat = None
@@ -427,7 +449,6 @@ async def scrape_q2_assignments(page: Page) -> list:
                 except Exception:
                     name = (await ar.locator('td.assignmentcol').inner_text()).strip()
 
-                # Flags: check codeCol cells for screen_readers_only text
                 flags = []
                 try:
                     code_cells = ar.locator('td.codeCol')
@@ -439,13 +460,11 @@ async def scrape_q2_assignments(page: Page) -> list:
                 except Exception:
                     pass
 
-                # Find the score/percent/grade cells by scanning tds
                 tds = ar.locator('td')
                 tc = await tds.count()
                 score_text = ''
                 percent_text = ''
                 grade_text = ''
-                # find index of score cell
                 score_idx = None
                 for k in range(tc):
                     cls = (await tds.nth(k).get_attribute('class')) or ''
@@ -457,7 +476,6 @@ async def scrape_q2_assignments(page: Page) -> list:
                         score_text = (await tds.nth(score_idx).inner_text()).strip()
                     except Exception:
                         score_text = ''
-                    # percent is usually next cell
                     if score_idx + 1 < tc:
                         try:
                             percent_text = (await tds.nth(score_idx + 1).inner_text()).strip()
@@ -469,16 +487,13 @@ async def scrape_q2_assignments(page: Page) -> list:
                         except Exception:
                             grade_text = ''
 
-                # Normalize score_text / percent_text
                 earned = None
                 possible = None
                 percent = None
-                # score like '100/100' or '--/100' or '(27.5/50)'
                 try:
                     s = score_text.replace('(', '').replace(')', '').replace('\u00a0', ' ')
                     if '/' in s:
                         left, right = [p.strip() for p in s.split('/', 1)]
-                        # remove non-number chars
                         left_num = re.search(r"(\d+(?:\.\d+)?)", left)
                         right_num = re.search(r"(\d+(?:\.\d+)?)", right)
                         if left_num:
@@ -487,14 +502,12 @@ async def scrape_q2_assignments(page: Page) -> list:
                             possible = float(right_num.group(1))
                         if earned is not None and possible is not None and possible != 0:
                             percent = round((earned / possible) * 100, 2)
-                    # percent column may contain a number
                     if percent is None and percent_text:
                         m = re.search(r"(\d+(?:\.\d+)?)", percent_text)
                         if m:
                             percent = float(m.group(1))
                             possible = possible or 100.0
-                            earned = earned or round((percent / 100.0) * possible, 2) if possible else earned
-                    # fallback: grade_text may contain a letter, ignore
+                            earned = earned or (round((percent / 100.0) * possible, 2) if possible else earned)
                 except Exception:
                     pass
 
@@ -513,13 +526,12 @@ async def scrape_q2_assignments(page: Page) -> list:
 
         details.append({
             "course": course,
-            "quarter": "Q2",
+            "quarter": current_label,
             "letter_grade": letter,
             "numeric_grade": numeric,
             "assignments": assignments
         })
 
-        # Close popup or go back
         try:
             if detail_page is not None and detail_page != page:
                 await detail_page.close()
@@ -532,44 +544,116 @@ async def scrape_q2_assignments(page: Page) -> list:
     return details
 
 
-async def main():
+def save_to_db(grades_data: dict):
+    """
+    Persist scraped grades and assignments into the shared formal.db.
+    Inserts fresh rows on every scrape run (does not upsert — history is preserved).
+    """
+    init_db()
+    scraped_at = grades_data.get("scraped_at", datetime.utcnow().isoformat() + "Z")
+    conn = get_db()
+
+    with conn:
+        for course in grades_data.get("grades", []):
+            course_name = course.get("course", "")
+            course_type = course.get("type", "Regular")
+
+            # Insert one row per quarter grade
+            for quarter, grade_info in course.get("grades", {}).items():
+                if not grade_info:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO grades (scraped_at, course, course_type, quarter, letter_grade, numeric_grade)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        scraped_at,
+                        course_name,
+                        course_type,
+                        quarter,
+                        grade_info.get("letter"),
+                        grade_info.get("numeric"),
+                    ),
+                )
+
+            # Insert assignment rows for each quarter
+            for quarter, assignments in course.get("assignments", {}).items():
+                for a in assignments:
+                    flags = json.dumps(a.get("flags", []))
+                    conn.execute(
+                        """
+                        INSERT INTO assignments
+                            (scraped_at, course, quarter, name, category, due_date,
+                             earned, possible, percent, letter, flags)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            scraped_at,
+                            course_name,
+                            quarter,
+                            a.get("name", ""),
+                            a.get("category"),
+                            a.get("due_date"),
+                            a.get("earned"),
+                            a.get("possible"),
+                            a.get("percent"),
+                            a.get("letter"),
+                            flags,
+                        ),
+                    )
+
+    conn.close()
+    print(f"✅ Saved to formal.db (scraped_at={scraped_at})")
+
+
+async def main(creds=None):
     """
     Main function to run the scraper.
+    Pass creds=(email, username, password) to skip the prompt.
     """
-    # Get credentials from user
-    email, username, password = get_credentials()
+    email, username, password = creds if creds else get_credentials()
     
     print(f"\n Starting browser automation...")
     print(f" Target: {POWERSCHOOL_URL}\n")
     
     # Start Playwright
     async with async_playwright() as p:
-        # Launch browser (headless=False so you can see it)
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
-        
-        # Perform login using Playwright's auto-wait features
+
+        await save_screenshot(page, "01_start")
+
+        # Perform login
         success = await login_with_google_sso(page, email, username, password)
-        
+
         if success:
             print("\n" + "="*60)
             print(" LOGIN COMPLETE!")
             print("="*60)
 
-            # Scrape grades and write to JSON
+            await save_screenshot(page, "02_home_grades_table")
+
+            # Detect grade column labels from the table header
+            grade_labels = await get_grade_column_labels(page)
+
+            # Scrape all quarter grades
             grades = await scrape_grades(page)
             if grades:
-                # Scrape Q2 assignment details and merge into grades
-                q2_details = await scrape_q2_assignments(page)
-                # Do not write a separate class_scores.json (we store details inside grades.json only)
-                # Merge by course name into grades.json
+                await save_screenshot(page, "03_after_grade_scrape")
+
+                # Scrape current-quarter assignment details
+                current_details = await scrape_current_quarter_assignments(page, grade_labels)
+
+                await save_screenshot(page, "04_after_assignments")
+
+                # Merge assignments into grades by course name
                 for g in grades:
-                    for d in q2_details:
+                    for d in current_details:
                         if g.get('course') and d.get('course') and g['course'].lower() == d['course'].lower():
-                            g.setdefault('assignments', {})['Q2'] = d.get('assignments', [])
-                            # also include the numeric/letter as a quick sanity
-                            g['grades']['O2'] = g['grades'].get('O2') or {'letter': d.get('letter_grade'), 'numeric': d.get('numeric_grade')}
+                            q_label = d.get('quarter', 'Q?')
+                            g.setdefault('assignments', {})[q_label] = d.get('assignments', [])
                             break
 
                 out_path = 'grades.json'
@@ -581,24 +665,15 @@ async def main():
                     with open(out_path, 'w', encoding='utf-8') as f:
                         json.dump(data, f, ensure_ascii=False, indent=2)
                     print(f"✅ Saved {len(grades)} grades → {out_path} (scraped_at={data['scraped_at']})")
+                    save_to_db(data)
                 except Exception as e:
                     print(f"❌ Failed to write grades to {out_path}: {e}")
             else:
                 print("⚠️ No grades extracted.")
-
-            print("\n You can now explore PowerSchool in the browser window.")
-            print(" Press Ctrl+C in the terminal when you're done.\n")
-            
-            # Keep browser open for exploration
-            try:
-                await page.wait_for_timeout(300000)  # Wait 5 minutes max
-            except KeyboardInterrupt:
-                print("\n🛑 Closing browser...")
         else:
-            print("\n❌ Login failed. Check the browser window for details.")
-            print("   Press Ctrl+C to close.\n")
-            await page.wait_for_timeout(60000)  # Wait 1 minute before closing
-        
+            await save_screenshot(page, "02_login_failed")
+            print("\n❌ Login failed.")
+
         await browser.close()
         print(" Browser closed. Automation complete!")
 

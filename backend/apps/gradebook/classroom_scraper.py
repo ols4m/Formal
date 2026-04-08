@@ -11,8 +11,12 @@ import json
 import os
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 from playwright.async_api import async_playwright, Page
 from bs4 import BeautifulSoup
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from core.db import get_db, init_db
 
 # ==========================================
 # CONFIG
@@ -423,6 +427,34 @@ def normalize(raw: dict, details: dict = None):
 # PART 4: WRITER
 # ==========================================
 
+def save_task_to_db(data: dict):
+    """Insert a Classroom assignment into the shared tasks table (skips duplicates)."""
+    init_db()
+    conn = get_db()
+    # Check for existing task by title + course
+    existing = conn.execute(
+        "SELECT id FROM tasks WHERE title = ? AND course = ? AND source = 'classroom'",
+        (data.get('assignment_title', ''), data.get('course_name', '')),
+    ).fetchone()
+    if not existing:
+        conn.execute(
+            """
+            INSERT INTO tasks (created_at, source, title, course, category, due_date, possible_points, status)
+            VALUES (?, 'classroom', ?, ?, ?, ?, ?, 'pending')
+            """,
+            (
+                data.get('timestamp', datetime.utcnow().isoformat() + 'Z'),
+                data.get('assignment_title', ''),
+                data.get('course_name', ''),
+                data.get('category'),
+                data.get('due_date'),
+                data.get('possible_points'),
+            ),
+        )
+        conn.commit()
+    conn.close()
+
+
 def write_assignment(data: dict):
     """Append assignment to JSON file (avoids duplicates)."""
     # Load existing data
@@ -447,6 +479,7 @@ def write_assignment(data: dict):
         db['assignments'].append(data)
         with open(JSON_PATH, 'w', encoding='utf-8') as f:
             json.dump(db, f, indent=2, ensure_ascii=False)
+        save_task_to_db(data)
         print(f"📁 Saved: {data.get('assignment_title', 'Unknown')}")
     else:
         print(f"ℹ️ (Already exists): {data.get('assignment_title', 'Unknown')}")
@@ -510,11 +543,11 @@ async def inject_dashboard_watcher(page: Page):
 # PART 6: MAIN ORCHESTRATION
 # ==========================================
 
-async def main():
-    email, username, password = get_credentials()
+async def main(creds=None):
+    email, username, password = creds if creds else get_credentials()
     
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
         

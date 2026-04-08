@@ -1,0 +1,4885 @@
+{
+  "scraped_at": "2026-04-08T17:26:18.732441Z",
+  "grades": [
+    {
+      "course": "AP English Literature and Composition",
+      "type": "AP",
+      "grades": {
+        "G1": {
+          "letter": "B-",
+          "numeric": 80
+        },
+        "G2": {
+          "letter": "B-",
+          "numeric": 82
+        },
+        "G3": {
+          "letter": "B-",
+          "numeric": 81
+        },
+        "G4": {
+          "letter": "B+",
+          "numeric": 87
+        },
+        "G5": {
+          "letter": "B",
+          "numeric": 83
+        },
+        "G6": {
+          "letter": "B",
+          "numeric": 83
+        }
+      },
+      "assignments": {
+        "Q2": [
+          {
+            "name": "Q2 IA",
+            "due_date": "01/21/2026",
+            "category": "Interim Assessments",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 71.0,
+            "possible": 100.0,
+            "percent": 71.0,
+            "letter": "C-"
+          },
+          {
+            "name": "Q2 Progress Report #3",
+            "due_date": "01/16/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "IA Review Partial Essay",
+            "due_date": "01/15/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Lit Terms 8 Quiz",
+            "due_date": "01/15/2026",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 18 Multiple Choice Tracker",
+            "due_date": "01/09/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Citizen Annotations",
+            "due_date": "01/05/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Song of Solomon Final Essay",
+            "due_date": "12/19/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 85.0,
+            "possible": 100.0,
+            "percent": 85.0,
+            "letter": "B"
+          },
+          {
+            "name": "DOS Act II and Requiem Annotations",
+            "due_date": "12/18/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "DOS Seminar",
+            "due_date": "12/18/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 85.0,
+            "possible": 100.0,
+            "percent": 85.0,
+            "letter": "B"
+          },
+          {
+            "name": "DOS Act II (p. 98) Annotations",
+            "due_date": "12/17/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "DOS Act I Annotations",
+            "due_date": "12/16/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Q2 Progress Report #2",
+            "due_date": "12/15/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Walcott Poetry Analysis Essay",
+            "due_date": "12/15/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 85.0,
+            "possible": 100.0,
+            "percent": 85.0,
+            "letter": "B"
+          },
+          {
+            "name": "Song of Solomon Final Seminar Week 15",
+            "due_date": "12/05/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 55.0,
+            "possible": 100.0,
+            "percent": 55.0,
+            "letter": "F-"
+          },
+          {
+            "name": "Lit Terms 7 Quiz",
+            "due_date": "12/04/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 55.0,
+            "possible": 100.0,
+            "percent": 55.0,
+            "letter": "F-"
+          },
+          {
+            "name": "SOS Ch. 13-15 Annotations",
+            "due_date": "12/04/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "SOS Ch. 11-12 Annotations",
+            "due_date": "12/03/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Prose Practice Planning Page ET",
+            "due_date": "12/01/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 90.0,
+            "possible": 100.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "SOS Ch. 10 Annotations",
+            "due_date": "12/01/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "SOS Ch. 7-9 Annotations",
+            "due_date": "11/25/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Q2 MQA",
+            "due_date": "11/24/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 65.0,
+            "possible": 100.0,
+            "percent": 65.0,
+            "letter": "F"
+          },
+          {
+            "name": "Lit Terms 6 Quiz",
+            "due_date": "11/21/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 55.0,
+            "possible": 100.0,
+            "percent": 55.0,
+            "letter": "F-"
+          },
+          {
+            "name": "Seminar Participation Week 13",
+            "due_date": "11/21/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Q2 Progress Report #1",
+            "due_date": "11/20/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "SOS Ch. 5-6 Annotations",
+            "due_date": "11/20/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "SOS Reading Quiz Ch 4-6",
+            "due_date": "11/20/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 55.0,
+            "possible": 100.0,
+            "percent": 55.0,
+            "letter": "F-"
+          },
+          {
+            "name": "SOS Ch. 5 (up to p. 141) Annotations",
+            "due_date": "11/19/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "SOS Ch. 4-5 Annotations",
+            "due_date": "11/18/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Lit Terms 5 Quiz",
+            "due_date": "11/17/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 55.0,
+            "possible": 100.0,
+            "percent": 55.0,
+            "letter": "F-"
+          },
+          {
+            "name": "Seminar Participation Week 12",
+            "due_date": "11/14/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 70.0,
+            "possible": 100.0,
+            "percent": 70.0,
+            "letter": "C-"
+          },
+          {
+            "name": "SOS Ch. 3 HW",
+            "due_date": "11/14/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "SOS Ch. 2 Pilate ET",
+            "due_date": "11/12/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 85.0,
+            "possible": 100.0,
+            "percent": 85.0,
+            "letter": "B"
+          },
+          {
+            "name": "SOS Ch.2 HW",
+            "due_date": "11/12/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 105.0,
+            "possible": 100.0,
+            "percent": 105.0,
+            "letter": "A+"
+          },
+          {
+            "name": "SOS Ch. 1 HW",
+            "due_date": "11/10/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "THT Lit Arg Essay",
+            "due_date": "11/04/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 88.0,
+            "possible": 100.0,
+            "percent": 88.0,
+            "letter": "B+"
+          },
+          {
+            "name": "MC Tracker AP Progress Check #3",
+            "due_date": "11/03/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 96.0,
+            "possible": 100.0,
+            "percent": 96.0,
+            "letter": "A"
+          }
+        ]
+      }
+    },
+    {
+      "course": "Calculus",
+      "type": "Regular",
+      "grades": {
+        "G1": {
+          "letter": "A-",
+          "numeric": 91
+        },
+        "G2": {
+          "letter": "A-",
+          "numeric": 92
+        },
+        "G3": {
+          "letter": "A-",
+          "numeric": 92
+        },
+        "G4": {
+          "letter": "A",
+          "numeric": 96
+        },
+        "G5": {
+          "letter": "A",
+          "numeric": 93
+        },
+        "G6": {
+          "letter": "A",
+          "numeric": 93
+        }
+      },
+      "assignments": {
+        "Q2": [
+          {
+            "name": "Q2 IA",
+            "due_date": "01/22/2026",
+            "category": "Interim Assessments",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 85.0,
+            "possible": 100.0,
+            "percent": 85.0,
+            "letter": "B"
+          },
+          {
+            "name": "HW Week 19 IA Review 2 (Completion)",
+            "due_date": "01/16/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 19 Participation",
+            "due_date": "01/16/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 95.0,
+            "possible": 100.0,
+            "percent": 95.0,
+            "letter": "A"
+          },
+          {
+            "name": "HW Week 19 IA Review 1 (Completion)",
+            "due_date": "01/15/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Progress Report #5",
+            "due_date": "01/15/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "5.16 Packet (Completion)",
+            "due_date": "01/13/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Unit 5 Test",
+            "due_date": "01/13/2026",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "MM 5.15",
+            "due_date": "01/09/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 93.0,
+            "possible": 100.0,
+            "percent": 93.0,
+            "letter": "A"
+          },
+          {
+            "name": "Week 18 Participation",
+            "due_date": "01/09/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 110.0,
+            "possible": 100.0,
+            "percent": 110.0,
+            "letter": "A+"
+          },
+          {
+            "name": "ET 5.14",
+            "due_date": "01/08/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 94.0,
+            "possible": 100.0,
+            "percent": 94.0,
+            "letter": "A"
+          },
+          {
+            "name": "HW 5.12 (Completion)",
+            "due_date": "01/07/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "HW 5.11",
+            "due_date": "01/06/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 91.0,
+            "possible": 100.0,
+            "percent": 91.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Winter Break Khan EC",
+            "due_date": "01/05/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 0.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Unit 5 Quiz",
+            "due_date": "12/19/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 73.0,
+            "possible": 100.0,
+            "percent": 73.0,
+            "letter": "C"
+          },
+          {
+            "name": "Week 17 Participation",
+            "due_date": "12/19/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "ET 5.10B",
+            "due_date": "12/18/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "HW 5.10",
+            "due_date": "12/18/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 92.0,
+            "possible": 100.0,
+            "percent": 92.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Progress Report #4",
+            "due_date": "12/17/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "5.08B Packet (Completion)",
+            "due_date": "12/16/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "ET 5.09B",
+            "due_date": "12/16/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 96.0,
+            "possible": 100.0,
+            "percent": 96.0,
+            "letter": "A"
+          },
+          {
+            "name": "12/15/25 Khan Academy",
+            "due_date": "12/15/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Pause Day Extra Credit",
+            "due_date": "12/14/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 25.0,
+            "possible": 0.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Week 16 Participation",
+            "due_date": "12/12/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "ET 5.08",
+            "due_date": "12/11/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 97.0,
+            "possible": 100.0,
+            "percent": 97.0,
+            "letter": "A+"
+          },
+          {
+            "name": "ET 5.07",
+            "due_date": "12/10/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 94.0,
+            "possible": 100.0,
+            "percent": 94.0,
+            "letter": "A"
+          },
+          {
+            "name": "HW 5.06",
+            "due_date": "12/10/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 78.0,
+            "possible": 100.0,
+            "percent": 78.0,
+            "letter": "C+"
+          },
+          {
+            "name": "Limits Oral Drill",
+            "due_date": "12/05/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 15 Participation",
+            "due_date": "12/05/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "ET 5.04",
+            "due_date": "12/04/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "HW 5.03 (Completion)",
+            "due_date": "12/04/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "HW 5.01",
+            "due_date": "12/02/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Thanksgiving Break Khan EC",
+            "due_date": "11/30/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 0.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Unit 4 Review 3 (Completion)",
+            "due_date": "11/25/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Unit 4 Test",
+            "due_date": "11/25/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 92.0,
+            "possible": 100.0,
+            "percent": 92.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Week 14 Participation",
+            "due_date": "11/25/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 95.0,
+            "possible": 100.0,
+            "percent": 95.0,
+            "letter": "A"
+          },
+          {
+            "name": "Progress Report #3",
+            "due_date": "11/24/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "MM 4.11",
+            "due_date": "11/21/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 75.0,
+            "possible": 100.0,
+            "percent": 75.0,
+            "letter": "C"
+          },
+          {
+            "name": "Week 13 Participation",
+            "due_date": "11/21/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 105.0,
+            "possible": 100.0,
+            "percent": 105.0,
+            "letter": "A+"
+          },
+          {
+            "name": "ET 4.09A",
+            "due_date": "11/20/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 97.0,
+            "possible": 100.0,
+            "percent": 97.0,
+            "letter": "A+"
+          },
+          {
+            "name": "ET 4.10B",
+            "due_date": "11/20/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "HW 4.10A",
+            "due_date": "11/19/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 86.0,
+            "possible": 100.0,
+            "percent": 86.0,
+            "letter": "B"
+          },
+          {
+            "name": "Khan 11/16/25 (Completion)",
+            "due_date": "11/17/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Khan Limits and Continuity: Quiz 1",
+            "due_date": "11/16/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Unit 4 Quiz",
+            "due_date": "11/14/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 82.0,
+            "possible": 100.0,
+            "percent": 82.0,
+            "letter": "B-"
+          },
+          {
+            "name": "Week 12 Participation",
+            "due_date": "11/14/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 75.0,
+            "possible": 100.0,
+            "percent": 75.0,
+            "letter": "C"
+          },
+          {
+            "name": "MM 4.08B",
+            "due_date": "11/13/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "ET 4.08A",
+            "due_date": "11/12/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "HW 4.07 (Completion)",
+            "due_date": "11/12/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "HW 4.06",
+            "due_date": "11/11/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "MM U4 Review 1",
+            "due_date": "11/07/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 11 Participation",
+            "due_date": "11/07/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 75.0,
+            "possible": 100.0,
+            "percent": 75.0,
+            "letter": "C"
+          },
+          {
+            "name": "ET 4.04",
+            "due_date": "11/06/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 91.0,
+            "possible": 100.0,
+            "percent": 91.0,
+            "letter": "A-"
+          },
+          {
+            "name": "ET 4.02",
+            "due_date": "11/05/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 95.0,
+            "possible": 100.0,
+            "percent": 95.0,
+            "letter": "A"
+          },
+          {
+            "name": "HW 4.03",
+            "due_date": "11/05/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "HW 4.00 (Completion)",
+            "due_date": "11/04/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          }
+        ]
+      }
+    },
+    {
+      "course": "AP US Government and Politics",
+      "type": "AP",
+      "grades": {
+        "G1": {
+          "letter": "B-",
+          "numeric": 80
+        },
+        "G2": {
+          "letter": "B-",
+          "numeric": 82
+        },
+        "G3": {
+          "letter": "B-",
+          "numeric": 81
+        },
+        "G4": {
+          "letter": "B",
+          "numeric": 86
+        },
+        "G5": {
+          "letter": "B",
+          "numeric": 83
+        },
+        "G6": {
+          "letter": "B",
+          "numeric": 83
+        }
+      },
+      "assignments": {
+        "Q2": [
+          {
+            "name": "Q2 Round 3 Progress Report Signature",
+            "due_date": "01/16/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Unit 2 Study Guide",
+            "due_date": "01/16/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Unit 3 MC Practice - Progress Check",
+            "due_date": "01/16/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 87.0,
+            "possible": 100.0,
+            "percent": 87.0,
+            "letter": "B+"
+          },
+          {
+            "name": "Week 19 Prep and Participation Grade",
+            "due_date": "01/16/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 90.0,
+            "possible": 100.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Q2 Tutorial Attendance - Extra Credit",
+            "due_date": "01/16/2026",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 0.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Unit 3 Benchmark: Civic Engagement Project",
+            "due_date": "01/15/2026",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 85.0,
+            "possible": 100.0,
+            "percent": 85.0,
+            "letter": "B"
+          },
+          {
+            "name": "IA 2",
+            "due_date": "01/12/2026",
+            "category": "Interim Assessments",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 69.0,
+            "possible": 100.0,
+            "percent": 69.0,
+            "letter": "F"
+          },
+          {
+            "name": "Week 18 Prep and Participation Grade",
+            "due_date": "01/09/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 50.0,
+            "possible": 100.0,
+            "percent": 50.0,
+            "letter": "F-"
+          },
+          {
+            "name": "Chapter 9 Notes -Civil Rights",
+            "due_date": "01/08/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 95.0,
+            "possible": 100.0,
+            "percent": 95.0,
+            "letter": "A"
+          },
+          {
+            "name": "The Ultimate SCOTUS Test",
+            "due_date": "01/07/2026",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 61.0,
+            "possible": 100.0,
+            "percent": 61.0,
+            "letter": "F"
+          },
+          {
+            "name": "Individuals, Groups, and Civil Rights: GS Pre Work",
+            "due_date": "01/06/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "U3L25: Guided Seminar Exit Ticket",
+            "due_date": "01/06/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Q2 Progress Report Round 2",
+            "due_date": "12/19/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 17 Prep and Participation Grade",
+            "due_date": "12/19/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "U3 L22 Do Now: Executive Review",
+            "due_date": "12/17/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 16 Prep and Participation Grade",
+            "due_date": "12/12/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 90.0,
+            "possible": 100.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "MQA Argument Essay",
+            "due_date": "12/10/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 68.0,
+            "possible": 100.0,
+            "percent": 68.0,
+            "letter": "F"
+          },
+          {
+            "name": "MQA Argument Essay Planning Page",
+            "due_date": "12/10/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 83.0,
+            "possible": 100.0,
+            "percent": 83.0,
+            "letter": "B"
+          },
+          {
+            "name": "Chapter 8 Notes Part 2- Completion Grade",
+            "due_date": "12/09/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "MQA Multiple Choice",
+            "due_date": "12/09/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "Patriot Act Seminar Prep (Extra Credit)",
+            "due_date": "12/08/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 25.0,
+            "possible": 0.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Civil Liberties or Social Order Seminar Prep",
+            "due_date": "12/05/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Gideon v Wainwright Case File HW",
+            "due_date": "12/03/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "U3 L13: Gideon v Wainwright ET",
+            "due_date": "12/03/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "Week 15 Prep and Participation Grade",
+            "due_date": "12/03/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "IA Data Day Extra Credit- Concept App",
+            "due_date": "12/02/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 25.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Chapter 8 Cornell Notes Part 1_8.1-8.4",
+            "due_date": "12/01/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "McDonald v Chicago Case File_HW",
+            "due_date": "12/01/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Engel v Vitale Case File HW",
+            "due_date": "11/25/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "U3 L10: Engle v Vitale ET",
+            "due_date": "11/25/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 14 Prep and Participation Grade",
+            "due_date": "11/25/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Q2 Progress Report Round 1",
+            "due_date": "11/24/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Wisconsin v Yoder Case File",
+            "due_date": "11/24/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "NY Times Co v US Case File_HW",
+            "due_date": "11/20/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "Week 13 Prep and Participation Grade",
+            "due_date": "11/20/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Tinker v Des Moines Case File_HW",
+            "due_date": "11/17/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 80.0,
+            "possible": 100.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "Bill of Rights Quiz",
+            "due_date": "11/14/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 95.0,
+            "possible": 100.0,
+            "percent": 95.0,
+            "letter": "A"
+          },
+          {
+            "name": "Schenck v US Case File_HW",
+            "due_date": "11/13/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 0.0,
+            "possible": 100.0,
+            "percent": 0.0,
+            "letter": "F-"
+          },
+          {
+            "name": "U2 L25: Concept App Exit Ticket",
+            "due_date": "11/11/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 12 Prep and Participation Grade",
+            "due_date": "11/11/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 75.0,
+            "possible": 100.0,
+            "percent": 75.0,
+            "letter": "C"
+          },
+          {
+            "name": "Chapter 7 Cornell Notes: Bureaucracy",
+            "due_date": "11/10/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 0.0,
+            "possible": 100.0,
+            "percent": 0.0,
+            "letter": "F-"
+          },
+          {
+            "name": "Civic Engagement Project Unit 2 Benchmark",
+            "due_date": "11/10/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 83.0,
+            "possible": 100.0,
+            "percent": 83.0,
+            "letter": "B"
+          },
+          {
+            "name": "IA 1 Self-Created Study Guide",
+            "due_date": "11/07/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 0.0,
+            "possible": 100.0,
+            "percent": 0.0,
+            "letter": "F-"
+          },
+          {
+            "name": "Week 11 Prep and Participation Grade",
+            "due_date": "11/07/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          }
+        ]
+      }
+    },
+    {
+      "course": "The Summit Program",
+      "type": "Regular",
+      "grades": {
+        "G1": {
+          "letter": "A+",
+          "numeric": 100
+        },
+        "G2": {
+          "letter": "A+",
+          "numeric": 100
+        },
+        "G3": {
+          "letter": "A+",
+          "numeric": 100
+        },
+        "G4": {
+          "letter": "A+",
+          "numeric": 100
+        },
+        "G5": {
+          "letter": "A+",
+          "numeric": 100
+        },
+        "G6": {
+          "letter": "A+",
+          "numeric": 100
+        }
+      },
+      "assignments": {
+        "Q2": [
+          {
+            "name": "Preparedness Week of 1/12",
+            "due_date": "01/16/2026",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "1/9 Loop 4 Project Work",
+            "due_date": "01/09/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparedness Week of 1/5",
+            "due_date": "01/09/2026",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "1/8 Loop 4 Work",
+            "due_date": "01/08/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparedness Week of 12/15",
+            "due_date": "12/19/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "12/15 Philosophy Reflections",
+            "due_date": "12/16/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparedness Week of 12/1",
+            "due_date": "12/05/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Loop 4 Project Work 12/3",
+            "due_date": "12/03/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 100.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Loop 4 Opening Survey",
+            "due_date": "12/01/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Final Project for Loop 3",
+            "due_date": "11/24/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "11/18 Loop 3 Project Work",
+            "due_date": "11/18/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparedness Week of 11/17",
+            "due_date": "11/17/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "11/13 Loop 3 Project Work",
+            "due_date": "11/14/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparedness Week of 11/10",
+            "due_date": "11/14/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "11/12 Loop 3 Project Work",
+            "due_date": "11/12/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "11/11 Project Work",
+            "due_date": "11/11/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparedness Week of 11/3",
+            "due_date": "11/07/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "11/6 AI Conversation",
+            "due_date": "11/06/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "11/5 Loop 3 Career Work",
+            "due_date": "11/05/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "11/4 CW",
+            "due_date": "11/04/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          }
+        ]
+      }
+    },
+    {
+      "course": "Programming in Python",
+      "type": "Regular",
+      "grades": {
+        "G1": {
+          "letter": "A",
+          "numeric": 94
+        },
+        "G2": {
+          "letter": "A",
+          "numeric": 93
+        },
+        "G3": {
+          "letter": "A",
+          "numeric": 94
+        },
+        "G4": {
+          "letter": "A",
+          "numeric": 95
+        },
+        "G5": {
+          "letter": "A",
+          "numeric": 94
+        },
+        "G6": {
+          "letter": "A",
+          "numeric": 94
+        }
+      },
+      "assignments": {
+        "Q2": [
+          {
+            "name": "Rock Paper Scissors Game",
+            "due_date": "01/16/2026",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 18.0,
+            "possible": 20.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Functions Day 6",
+            "due_date": "01/13/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Functions Day 5",
+            "due_date": "01/12/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Functions Quiz",
+            "due_date": "01/09/2026",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.5,
+            "possible": 10.0,
+            "percent": 105.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Functions Day 4",
+            "due_date": "01/08/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.5,
+            "possible": 10.0,
+            "percent": 95.0,
+            "letter": "A"
+          },
+          {
+            "name": "Functions Day 3",
+            "due_date": "01/07/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 11.0,
+            "possible": 10.0,
+            "percent": 110.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Functions Day 2",
+            "due_date": "01/06/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.0,
+            "possible": 10.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Functions Day 1",
+            "due_date": "01/05/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 0.0,
+            "possible": 10.0,
+            "percent": 0.0,
+            "letter": "F-"
+          },
+          {
+            "name": "Program Planning Quiz",
+            "due_date": "12/16/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 7.5,
+            "possible": 10.0,
+            "percent": 75.0,
+            "letter": "C"
+          },
+          {
+            "name": "Cashier Program",
+            "due_date": "12/15/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 19.0,
+            "possible": 20.0,
+            "percent": 95.0,
+            "letter": "A"
+          },
+          {
+            "name": "Word Scramble Game",
+            "due_date": "12/11/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 11.2,
+            "possible": 10.0,
+            "percent": 112.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Number Guessing Game",
+            "due_date": "12/10/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.9,
+            "possible": 10.0,
+            "percent": 109.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Lists Quiz (Coding)",
+            "due_date": "12/05/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Lists Quiz (Multiple Choice)",
+            "due_date": "12/05/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Lists Day 4",
+            "due_date": "12/04/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 11.0,
+            "possible": 10.0,
+            "percent": 110.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Lists Day 3",
+            "due_date": "12/03/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.0,
+            "possible": 10.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Lists Day 2",
+            "due_date": "12/02/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 11.2,
+            "possible": 10.0,
+            "percent": 112.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Lists Day 1",
+            "due_date": "12/01/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 11.0,
+            "possible": 10.0,
+            "percent": 110.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Strings Day 4",
+            "due_date": "11/24/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.0,
+            "possible": 10.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Strings Day 4 HW",
+            "due_date": "11/24/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.0,
+            "possible": 10.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Loops and Strings Quiz",
+            "due_date": "11/21/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 12.0,
+            "percent": 83.33,
+            "letter": "B"
+          },
+          {
+            "name": "Strings Day 3",
+            "due_date": "11/20/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Strings Day 2",
+            "due_date": "11/19/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.0,
+            "possible": 10.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "String Day 1 HW",
+            "due_date": "11/18/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 7.5,
+            "possible": 10.0,
+            "percent": 75.0,
+            "letter": "C"
+          },
+          {
+            "name": "Strings Day 1",
+            "due_date": "11/18/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.0,
+            "possible": 10.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Loops Practice",
+            "due_date": "11/17/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.0,
+            "possible": 10.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Loops: Range Function",
+            "due_date": "11/14/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.0,
+            "possible": 10.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Program Thinking Practice",
+            "due_date": "11/13/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Loops: Nested Loops",
+            "due_date": "11/12/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Loops: Break and Continue",
+            "due_date": "11/11/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.2,
+            "possible": 10.0,
+            "percent": 102.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Program Thinking Class Notes",
+            "due_date": "11/07/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 9.0,
+            "possible": 10.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Calculator Project Task 3",
+            "due_date": "11/06/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 4.0,
+            "possible": 5.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "Calculator Project Task 2",
+            "due_date": "11/05/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 4.0,
+            "possible": 5.0,
+            "percent": 80.0,
+            "letter": "B-"
+          },
+          {
+            "name": "Calculator Project Task 1",
+            "due_date": "11/04/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 12.0,
+            "possible": 10.0,
+            "percent": 120.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Calculator Planning Sheet",
+            "due_date": "11/03/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          }
+        ]
+      }
+    },
+    {
+      "course": "College Seminar 12",
+      "type": "Regular",
+      "grades": {
+        "G1": {
+          "letter": "A-",
+          "numeric": 91
+        },
+        "G2": {
+          "letter": "A+",
+          "numeric": 100
+        },
+        "G3": {
+          "letter": "A",
+          "numeric": 96
+        },
+        "G4": {
+          "letter": "A+",
+          "numeric": 99
+        },
+        "G5": {
+          "letter": "A+",
+          "numeric": 97
+        },
+        "G6": {
+          "letter": "A+",
+          "numeric": 97
+        }
+      },
+      "assignments": {
+        "Q2": [
+          {
+            "name": "EOF Tracker/Survey Quiz",
+            "due_date": "01/14/2026",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 1/14",
+            "due_date": "01/14/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Emotions Activity 1/13",
+            "due_date": "01/13/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "IWT - 1/8",
+            "due_date": "01/08/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 1/7",
+            "due_date": "01/07/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Application Follow Up Chart",
+            "due_date": "01/06/2026",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Submit All Schools by 12/19",
+            "due_date": "12/19/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation - HESAA Worksheet",
+            "due_date": "12/02/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "FASFA Summary",
+            "due_date": "11/25/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "FAFSA Complete",
+            "due_date": "11/07/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 10.0,
+            "possible": 10.0,
+            "percent": 100.0,
+            "letter": "A+"
+          }
+        ]
+      }
+    },
+    {
+      "course": "Financial Literacy",
+      "type": "Regular",
+      "grades": {
+        "G1": {
+          "letter": "A+",
+          "numeric": 97
+        },
+        "G2": {
+          "letter": "A+",
+          "numeric": 103
+        },
+        "G3": {
+          "letter": "A+",
+          "numeric": 100
+        },
+        "G4": {
+          "letter": "A+",
+          "numeric": 98
+        },
+        "G5": {
+          "letter": "A+",
+          "numeric": 99
+        },
+        "G6": {
+          "letter": "A+",
+          "numeric": 99
+        }
+      },
+      "assignments": {
+        "Q2": [
+          {
+            "name": "Week 18, Housing",
+            "due_date": "01/24/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 0.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Chapter 6, Housing",
+            "due_date": "01/23/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.2,
+            "possible": 5.0,
+            "percent": 104.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Lesson 11, How and why to purchase a home",
+            "due_date": "01/23/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 4.7,
+            "possible": 5.0,
+            "percent": 94.0,
+            "letter": "A"
+          },
+          {
+            "name": "Purchasing a Home, Exercise #2",
+            "due_date": "01/23/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Financial Literacy Mindset Survey",
+            "due_date": "01/22/2026",
+            "category": "Interim Assessments",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Purchasing a car--packet",
+            "due_date": "01/21/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 4.4,
+            "possible": 5.0,
+            "percent": 88.0,
+            "letter": "B+"
+          },
+          {
+            "name": "Purchasing a car--practice",
+            "due_date": "01/21/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "The Budget Game",
+            "due_date": "01/19/2026",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Attendance 1.6.25",
+            "due_date": "01/06/2026",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 16, Life After Graduation",
+            "due_date": "12/19/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 17, Buying a Car",
+            "due_date": "12/19/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "The Budget Game",
+            "due_date": "12/14/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 15, Responsible Income and Spending",
+            "due_date": "12/05/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Attendance 12.4.25",
+            "due_date": "12/04/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 14, Building and Sharing Wealth",
+            "due_date": "11/28/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 90.0,
+            "possible": 100.0,
+            "percent": 90.0,
+            "letter": "A-"
+          },
+          {
+            "name": "Attendance 11.25.25",
+            "due_date": "11/25/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Attendance 11.18.25",
+            "due_date": "11/18/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "The Budget Game",
+            "due_date": "11/15/2025",
+            "category": "Tests",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 12, Career & Income",
+            "due_date": "11/14/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 13, Starting Your Career",
+            "due_date": "11/14/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Attendance 11.11.25",
+            "due_date": "11/11/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 10, Managing Debt",
+            "due_date": "11/07/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 100.0,
+            "possible": 100.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Week 11, Intro to Banking",
+            "due_date": "11/07/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 89.0,
+            "possible": 100.0,
+            "percent": 89.0,
+            "letter": "B+"
+          },
+          {
+            "name": "Attendance 11.4.25",
+            "due_date": "11/04/2025",
+            "category": "Quizzes",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          }
+        ]
+      }
+    },
+    {
+      "course": "Physical Education IV",
+      "type": "Regular",
+      "grades": {
+        "G1": {
+          "letter": "A+",
+          "numeric": 99
+        },
+        "G2": {
+          "letter": "A+",
+          "numeric": 100
+        },
+        "G3": {
+          "letter": "A+",
+          "numeric": 100
+        },
+        "G4": {
+          "letter": "A",
+          "numeric": 96
+        },
+        "G5": {
+          "letter": "A+",
+          "numeric": 98
+        },
+        "G6": {
+          "letter": "A+",
+          "numeric": 98
+        }
+      },
+      "assignments": {
+        "Q2": [
+          {
+            "name": "Participation 1/16",
+            "due_date": "01/16/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 1/16",
+            "due_date": "01/16/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 1/14",
+            "due_date": "01/14/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 1/14",
+            "due_date": "01/14/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 1/9",
+            "due_date": "01/09/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 1/9",
+            "due_date": "01/09/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 1/7",
+            "due_date": "01/07/2026",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Preparation 1/7",
+            "due_date": "01/07/2026",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Participation 12/19",
+            "due_date": "12/19/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 12/19",
+            "due_date": "12/19/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 12/17",
+            "due_date": "12/17/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 12/17",
+            "due_date": "12/17/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 12/12",
+            "due_date": "12/12/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 12/12",
+            "due_date": "12/12/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 12/10",
+            "due_date": "12/10/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Preparation 12/10",
+            "due_date": "12/10/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Participation 12/5",
+            "due_date": "12/05/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Preparation 12/5",
+            "due_date": "12/05/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Participation 12/3",
+            "due_date": "12/03/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Preparation 12/3",
+            "due_date": "12/03/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Participation 11/21",
+            "due_date": "11/21/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 11/21",
+            "due_date": "11/21/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 11/19",
+            "due_date": "11/19/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 11/19",
+            "due_date": "11/19/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 11/14",
+            "due_date": "11/14/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 11/14",
+            "due_date": "11/14/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 11/12",
+            "due_date": "11/12/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Preparation 11/12",
+            "due_date": "11/12/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": null,
+            "possible": 5.0,
+            "percent": null,
+            "letter": null
+          },
+          {
+            "name": "Participation 11/7",
+            "due_date": "11/07/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 11/7",
+            "due_date": "11/07/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Participation 11/5",
+            "due_date": "11/05/2025",
+            "category": "Classwork",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          },
+          {
+            "name": "Preparation 11/5",
+            "due_date": "11/05/2025",
+            "category": "Homework",
+            "flags": [
+              "collected",
+              "late",
+              "missing",
+              "exempt from final grade",
+              "absent",
+              "incomplete",
+              "excluded from final grade"
+            ],
+            "earned": 5.0,
+            "possible": 5.0,
+            "percent": 100.0,
+            "letter": "A+"
+          }
+        ]
+      }
+    }
+  ]
+}
