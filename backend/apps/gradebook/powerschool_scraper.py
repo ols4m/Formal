@@ -51,9 +51,19 @@ async def get_grade_column_labels(page: Page) -> list:
                 }, []);
                 if (activeCols.length === 0) return [];
 
-                // Build a flat header array expanding colspan
-                const headerRow = document.querySelector('thead tr:last-child') ||
-                                  document.querySelector('thead tr');
+                // Find the thead row with the most grade-pattern labels (Q1, Q2, F2, etc.)
+                // thead tr:last-child is unreliable — PowerSchool has an attendance day row
+                // (M T W H F S) as the last header row, which has no Q/F/Y labels.
+                const headerRows = Array.from(document.querySelectorAll('thead tr'));
+                let headerRow = null, bestScore = -1;
+                for (const row of headerRows) {
+                    let score = 0;
+                    for (const cell of row.querySelectorAll('th, td')) {
+                        const t = (cell.innerText || cell.textContent || '').trim().replace(/\\s+/g, ' ');
+                        if (pat.test(t)) score++;
+                    }
+                    if (score > bestScore) { bestScore = score; headerRow = row; }
+                }
                 if (!headerRow) return activeCols.map((_, i) => 'G' + (i + 1));
 
                 const flat = [];
