@@ -111,6 +111,29 @@ def load_grades(path: str = 'grades.json') -> dict:
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
+def detect_current_quarter(grades_data: dict) -> str:
+    """
+    Infer the active quarter from the scraped data.
+    Priority: latest Q-quarter with assignment data, then latest with any grade.
+    """
+    quarter_order = ['Q1', 'Q2', 'Q3', 'Q4']
+    # Assignments are only scraped for the current quarter
+    found_with_assignments = set()
+    for course in grades_data.get('grades', []):
+        found_with_assignments.update(course.get('assignments', {}).keys())
+    for q in reversed(quarter_order):
+        if q in found_with_assignments:
+            return q
+    # Fallback: latest Q with grade data
+    found_with_grades = set()
+    for course in grades_data.get('grades', []):
+        found_with_grades.update(course.get('grades', {}).keys())
+    for q in reversed(quarter_order):
+        if q in found_with_grades:
+            return q
+    return 'Q4'
+
+
 def load_upcoming_assignments(path: str = 'output/assignments.json') -> list:
     """Load upcoming assignments from Classroom scraper."""
     if not os.path.exists(path):
@@ -149,9 +172,9 @@ def calculate_gpa(grades_data: dict, quarter: str = 'Q2', weighted: bool = True)
         # Get the grade for the specified quarter
         quarter_grades = course.get('grades', {})
         
-        # Try to find the grade (check multiple quarter keys)
+        # Try the requested quarter first, then fall back to yearly/latest
         grade_info = None
-        for qkey in [quarter, 'O2', 'Q2', 'Q1', 'Y1']:
+        for qkey in [quarter, 'Y1', 'Q4', 'Q3', 'Q2', 'Q1']:
             if qkey in quarter_grades:
                 grade_info = quarter_grades[qkey]
                 break
@@ -489,7 +512,8 @@ def analyze_upcoming_assignment(
     cat_data = cat_stats.get(normalized_category, {'average': 85, 'total_possible': 0, 'count': 0})
     
     # Get current class grade
-    grade_info = matching_course.get('grades', {}).get('O2') or matching_course.get('grades', {}).get(quarter, {})
+    grade_info = (matching_course.get('grades', {}).get(quarter)
+                  or matching_course.get('grades', {}).get('Y1', {}))
     current_class_grade = grade_info.get('numeric', 85)
     
     # Calculate impacts for different scenarios
@@ -523,10 +547,253 @@ def analyze_upcoming_assignment(
 
 
 # ==========================================
+# MISSING ASSIGNMENT REPORT
+# ==========================================
+
+def generate_missing_report(
+    missing_path: str = 'output/missing.json',
+    grades_path: str = 'grades.json'
+):
+    """
+    Load missing assignments and show their grade impact per course.
+    Cross-references with grades.json to estimate the hit.
+    """
+    if not os.path.exists(missing_path):
+        print("⚠️  No missing.json found — run the classroom scraper first.")
+        return
+
+    with open(missing_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    missing = data.get('missing', [])
+    grades_data = load_grades(grades_path)
+    quarter = detect_current_quarter(grades_data) if grades_data else 'Q4'
+
+    print("=" * 70)
+    print("🚨 MISSING ASSIGNMENTS REPORT")
+    print(f"   Scraped: {data.get('scraped_at', 'unknown')}  |  Current quarter: {quarter}")
+    print("=" * 70)
+
+    if not missing:
+        print("\n✅ No missing assignments found.")
+        print("=" * 70)
+        return
+
+    # Build a lookup of every graded assignment name (earned != null) from grades.json
+    # so we can detect "missing on Classroom but already graded in PowerSchool"
+    graded_names: set = set()
+    if grades_data:
+        for c in grades_data.get('grades', []):
+            for q_assignments in c.get('assignments', {}).values():
+                for a in q_assignments:
+                    if a.get('earned') is not None:
+                        graded_names.add(a.get('name', '').lower().strip())
+
+    def _is_already_graded(title: str) -> bool:
+        """Fuzzy match: Classroom title vs PowerSchool assignment names."""
+        t = title.lower().strip()
+        if t in graded_names:
+            return True
+        # Partial match: if the classroom title is a substring of a PS name or vice versa
+        for g in graded_names:
+            if t and (t in g or g in t):
+                return True
+        return False
+
+    # Group by course, tagging each item as truly missing or already graded
+    by_course: dict = {}
+    for item in missing:
+        course_key = item.get('course') or 'Unknown'
+        item['_already_graded'] = _is_already_graded(item.get('title', ''))
+        by_course.setdefault(course_key, []).append(item)
+
+    truly_missing_total = sum(
+        1 for items in by_course.values()
+        for i in items if not i['_already_graded']
+    )
+
+    for course_label, items in sorted(by_course.items()):
+        truly_missing = [i for i in items if not i['_already_graded']]
+        already_graded = [i for i in items if i['_already_graded']]
+
+        if not truly_missing and not already_graded:
+            continue
+
+        print(f"\n📘 {course_label}")
+
+        # Already graded — just flagged as not turned in on Classroom
+        for item in already_graded:
+            print(f"   ✅ {item.get('title')}  (graded in PowerSchool — just not marked turned in)")
+
+        if not truly_missing:
+            continue
+
+        print(f"   ⚠️  {len(truly_missing)} genuinely missing:")
+
+        # Match to grades.json course for impact calculation
+        matched = None
+        if grades_data:
+            for c in grades_data.get('grades', []):
+                c_name = c.get('course', '').lower()
+                if c_name in course_label.lower() or course_label.lower() in c_name:
+                    matched = c
+                    break
+
+        for item in truly_missing:
+            title = item.get('title', 'Unknown')
+            due   = item.get('due') or 'No due date'
+            print(f"   • {title}")
+            print(f"     Due: {due}")
+
+        if matched:
+            grade_info = (matched.get('grades', {}).get(quarter)
+                          or matched.get('grades', {}).get('Y1', {}))
+            current_num = grade_info.get('numeric')
+            current_let = grade_info.get('letter', 'N/A')
+
+            assignments = matched.get('assignments', {}).get(quarter, [])
+            cat_avgs    = calculate_category_averages(assignments)
+            hw_data     = cat_avgs.get('Homework', {'average': 85, 'total_possible': 0})
+
+            count = len(truly_missing)
+            impact_per = calculate_assignment_impact(
+                category='Homework',
+                points_possible=100,
+                score=0,
+                category_avg=hw_data.get('average', 85),
+                category_points_so_far=hw_data.get('total_possible', 0),
+                current_class_grade=current_num
+            )
+            total_hit   = round(impact_per['delta_class'] * count, 2)
+            projected   = round((current_num or 0) + total_hit, 1) if current_num else None
+
+            print(f"\n   Current {quarter} grade: {current_let} ({current_num}%)")
+            print(f"   Estimated hit if all stay 0: {total_hit:+.2f}%", end='')
+            if projected is not None:
+                proj_let = percent_to_letter(school_round(projected))
+                print(f"  →  projected {projected}% ({proj_let})", end='')
+            print()
+        else:
+            print("   (no matching course in grades.json for impact calculation)")
+
+    print("\n" + "=" * 70)
+    flagged = len(missing) - truly_missing_total
+    print(f"⚠️  Genuinely missing: {truly_missing_total}  |  Already graded (not turned in): {flagged}")
+    print("=" * 70)
+
+
+# ==========================================
+# TREND REPORT (all quarters)
+# ==========================================
+
+QUARTER_SEQUENCE = ['Q1', 'Q2', 'Q3', 'Q4']
+FINAL_MAP = {'Q2': 'F2', 'Q3': 'F3'}  # semester finals that follow each Q
+
+
+def generate_trend_report(grades_path: str = 'grades.json'):
+    """Show grade progression across all available quarters."""
+    grades_data = load_grades(grades_path)
+    if not grades_data:
+        print("❌ No grades data found")
+        return
+
+    # Which Q-quarters actually have data
+    available = []
+    for q in QUARTER_SEQUENCE:
+        for course in grades_data.get('grades', []):
+            if q in course.get('grades', {}):
+                available.append(q)
+                break
+
+    print("=" * 70)
+    print("📈 GRADE PROGRESSION REPORT")
+    print(f"   Quarters with data: {' → '.join(available)}")
+    print("=" * 70)
+
+    # ── GPA trend ──────────────────────────────────────────────────────
+    print("\n─" * 35)
+    print("🎓 WEIGHTED GPA BY QUARTER")
+    print("─" * 70)
+    gpas = {}
+    for q in available:
+        gpa, _ = calculate_gpa(grades_data, quarter=q, weighted=True)
+        gpas[q] = gpa
+        arrow = ''
+        if len(gpas) > 1:
+            prev = list(gpas.values())[-2]
+            diff = gpa - prev
+            arrow = f"  ({'↑' if diff > 0 else '↓' if diff < 0 else '→'}{abs(diff):+.2f})"
+        print(f"   {q}: {gpa}{arrow}")
+
+    # ── Per-class progression ───────────────────────────────────────────
+    print("\n─" * 35)
+    print("📖 PER-CLASS GRADE PROGRESSION")
+    print("─" * 70)
+
+    header = "   {:<38}".format("Course") + "  ".join(f"{q:>5}" for q in available)
+    print(header)
+    print("   " + "─" * (38 + 7 * len(available)))
+
+    for course in grades_data.get('grades', []):
+        name = course.get('course', 'Unknown')
+        ctype = course.get('type', 'Regular')
+        tag = ' (AP)' if ctype == 'AP' else ''
+        label = (name + tag)[:38].ljust(38)
+        row = f"   {label}"
+        prev_num = None
+        for q in available:
+            info = course.get('grades', {}).get(q)
+            if info:
+                num = info.get('numeric', 0)
+                arrow = ''
+                if prev_num is not None:
+                    diff = num - prev_num
+                    arrow = '↑' if diff > 0 else ('↓' if diff < 0 else '→')
+                row += f"  {num:>3}{arrow:<1}"
+                prev_num = num
+            else:
+                row += "   --  "
+        print(row)
+
+    # ── Category trend across all quarters ─────────────────────────────
+    print("\n─" * 35)
+    print("📚 CATEGORY AVERAGES BY QUARTER (assignments scraped)")
+    print("─" * 70)
+
+    cat_by_quarter = {}
+    for q in available:
+        avgs = calculate_all_class_averages(grades_data, q)
+        if avgs:
+            cat_by_quarter[q] = avgs
+
+    all_cats = sorted({c for avgs in cat_by_quarter.values() for c in avgs})
+    if all_cats:
+        header2 = "   {:<22}".format("Category") + "  ".join(
+            f"{q:>8}" for q in cat_by_quarter
+        )
+        print(header2)
+        print("   " + "─" * (22 + 10 * len(cat_by_quarter)))
+        for cat in all_cats:
+            row = f"   {cat:<22}"
+            for q, avgs in cat_by_quarter.items():
+                if cat in avgs:
+                    row += f"  {avgs[cat]['average']:>6.1f}%"
+                else:
+                    row += "       --"
+            print(row)
+    else:
+        print("   (No assignment data scraped — run with ALL quarters to populate)")
+
+    print("\n" + "=" * 70)
+    print("✅ Trend Report Complete")
+    print("=" * 70)
+
+
+# ==========================================
 # MAIN REPORT GENERATOR
 # ==========================================
 
-def generate_full_report(grades_path: str = 'grades.json', upcoming_path: str = 'output/assignments.json'):
+def generate_full_report(grades_path: str = 'grades.json', upcoming_path: str = 'output/assignments.json', quarter: str = None):
     """
     Generate a comprehensive grade report.
     """
@@ -539,71 +806,82 @@ def generate_full_report(grades_path: str = 'grades.json', upcoming_path: str = 
     # Load data
     grades_data = load_grades(grades_path)
     upcoming = load_upcoming_assignments(upcoming_path)
-    
+
     if not grades_data:
         print("❌ No grades data found")
         return
-    
+
+    if quarter:
+        quarter = quarter.upper()
+        print(f"Quarter: {quarter} (specified)")
+    else:
+        quarter = detect_current_quarter(grades_data)
+        print(f"Quarter: {quarter} (auto-detected)")
+
     # =========================================
     # 1. GPA CALCULATIONS
     # =========================================
     print("─" * 70)
     print("📈 GPA CALCULATIONS")
     print("─" * 70)
-    
+
     # Weighted GPA
-    weighted_gpa, weighted_breakdown = calculate_gpa(grades_data, quarter='Q2', weighted=True)
+    weighted_gpa, weighted_breakdown = calculate_gpa(grades_data, quarter=quarter, weighted=True)
     print(f"\n🎓 Weighted GPA: {weighted_gpa}")
     print("   Breakdown:")
     for course in weighted_breakdown:
         ap_marker = " (AP +1.0)" if course['is_ap'] else ""
         print(f"      • {course['course']}: {course['letter']} ({course['numeric']}%) → {course['points']} pts{ap_marker}")
-    
+
     # Unweighted GPA
-    unweighted_gpa, unweighted_breakdown = calculate_gpa(grades_data, quarter='Q2', weighted=False)
+    unweighted_gpa, _ = calculate_gpa(grades_data, quarter=quarter, weighted=False)
     print(f"\n🎓 Unweighted GPA: {unweighted_gpa}")
-    
+
     # =========================================
     # 2. CATEGORY AVERAGES ACROSS ALL CLASSES
     # =========================================
     print("\n" + "─" * 70)
-    print("📚 CATEGORY AVERAGES (All Classes)")
+    print(f"📚 CATEGORY AVERAGES ({quarter} — All Classes)")
     print("─" * 70)
-    
-    all_avgs = calculate_all_class_averages(grades_data, 'Q2')
+
+    all_avgs = calculate_all_class_averages(grades_data, quarter)
     for cat, data in sorted(all_avgs.items()):
         raw_avg = data['average']
         rounded_avg = school_round(raw_avg)
         letter = percent_to_letter(rounded_avg)
         print(f"   {cat}: {raw_avg}% → {rounded_avg}% ({letter}) - {data['count']} assignments")
-    
+
     # =========================================
     # 3. PER-CLASS BREAKDOWN
     # =========================================
     print("\n" + "─" * 70)
-    print("📖 PER-CLASS BREAKDOWN (with School Rounding)")
+    print(f"📖 PER-CLASS BREAKDOWN — {quarter} (with School Rounding)")
     print("─" * 70)
-    
+
     for course in grades_data.get('grades', []):
         course_name = course.get('course', 'Unknown')
         course_type = course.get('type', 'Regular')
-        assignments = course.get('assignments', {}).get('Q2', [])
-        
-        grade_info = course.get('grades', {}).get('O2') or course.get('grades', {}).get('Q2', {})
+        assignments = course.get('assignments', {}).get(quarter, [])
+
+        grade_info = (course.get('grades', {}).get(quarter)
+                      or course.get('grades', {}).get('Y1', {}))
         current_grade = grade_info.get('numeric', 0)
         current_letter = grade_info.get('letter', 'N/A')
         rounded_grade = school_round(current_grade)
         rounded_letter = percent_to_letter(rounded_grade)
-        
+
         print(f"\n   📘 {course_name} ({course_type})")
         print(f"      Current Grade: {current_letter} ({current_grade}%) → Rounded: {rounded_grade}% ({rounded_letter})")
-        
+
         cat_avgs = calculate_category_averages(assignments)
-        for cat, data in sorted(cat_avgs.items()):
-            weight = CATEGORY_WEIGHTS.get(cat, 0) * 100
-            raw = data['average']
-            rounded = school_round(raw)
-            print(f"         {cat} ({weight:.0f}%): {raw}% → {rounded}% ({data['count']} assignments)")
+        if cat_avgs:
+            for cat, data in sorted(cat_avgs.items()):
+                weight = CATEGORY_WEIGHTS.get(cat, 0) * 100
+                raw = data['average']
+                rounded = school_round(raw)
+                print(f"         {cat} ({weight:.0f}%): {raw}% → {rounded}% ({data['count']} assignments)")
+        else:
+            print(f"         (no {quarter} assignment data)")
     
     # =========================================
     # 4. UPCOMING ASSIGNMENTS IMPACT
@@ -665,7 +943,8 @@ def interactive_calculator():
     courses = grades_data.get('grades', [])
     print("Your Courses:")
     for i, course in enumerate(courses):
-        grade = course.get('grades', {}).get('O2', {}).get('numeric', '?')
+        cq = detect_current_quarter(grades_data)
+        grade = (course.get('grades', {}).get(cq) or course.get('grades', {}).get('Y1', {})).get('numeric', '?')
         print(f"  {i+1}. {course['course']} - Currently: {grade}%")
     
     try:
@@ -689,11 +968,13 @@ def interactive_calculator():
         return
     
     # Calculate
-    assignments = selected_course.get('assignments', {}).get('Q2', [])
+    cq = detect_current_quarter(grades_data)
+    assignments = selected_course.get('assignments', {}).get(cq, [])
     cat_stats = calculate_category_averages(assignments)
     cat_data = cat_stats.get(category, {'average': 85, 'total_possible': 0})
-    
-    grade_info = selected_course.get('grades', {}).get('O2', {})
+
+    grade_info = (selected_course.get('grades', {}).get(cq)
+                  or selected_course.get('grades', {}).get('Y1', {}))
     current_grade = grade_info.get('numeric', 85)
     
     impact = calculate_assignment_impact(

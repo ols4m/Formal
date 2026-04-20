@@ -15,76 +15,54 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.db import get_db, init_db
 
-SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
 
-
-async def save_screenshot(page, label: str):
-    """Save a screenshot for visual inspection in VSCode."""
-    try:
-        SCREENSHOTS_DIR.mkdir(exist_ok=True)
-        ts = datetime.utcnow().strftime("%H%M%S")
-        path = SCREENSHOTS_DIR / f"{ts}_{label}.png"
-        await page.screenshot(path=str(path), full_page=False)
-        print(f"📸 Screenshot saved → apps/gradebook/screenshots/{path.name}")
-    except Exception as e:
-        print(f"⚠️  Screenshot failed: {e}")
-
-
-async def get_grade_column_labels(page: Page) -> list:
+async def detect_current_quarter(page: Page) -> str:
     """
-    Detect grade column labels by matching table headers to columns that have
-    a.bold grade links, using JavaScript for reliable colspan-aware DOM traversal.
-    Returns labels like ['Q1', 'Q2', 'F2', 'Q3', 'F3', 'Y1'] — one entry per grade link.
+    Find the latest active quarter by reading fg= params from bold grade links.
+    Returns the highest Q-quarter that has real grades (e.g. 'Q4', 'Q3').
     """
     try:
-        labels = await page.evaluate("""
+        quarters = await page.evaluate("""
             () => {
-                const pat = /^[QqOoFfSsYyEe]\\d$/;
-
-                // Find which td-column indices have a.bold in the first data row
-                const firstRow = document.querySelector('tbody tr[id^="ccid_"]');
-                if (!firstRow) return [];
-                const tds = Array.from(firstRow.querySelectorAll('td'));
-                const activeCols = tds.reduce((acc, td, idx) => {
-                    if (td.querySelector('a.bold')) acc.push(idx);
-                    return acc;
-                }, []);
-                if (activeCols.length === 0) return [];
-
-                // Find the thead row with the most grade-pattern labels (Q1, Q2, F2, etc.)
-                // thead tr:last-child is unreliable — PowerSchool has an attendance day row
-                // (M T W H F S) as the last header row, which has no Q/F/Y labels.
-                const headerRows = Array.from(document.querySelectorAll('thead tr'));
-                let headerRow = null, bestScore = -1;
-                for (const row of headerRows) {
-                    let score = 0;
-                    for (const cell of row.querySelectorAll('th, td')) {
-                        const t = (cell.innerText || cell.textContent || '').trim().replace(/\\s+/g, ' ');
-                        if (pat.test(t)) score++;
-                    }
-                    if (score > bestScore) { bestScore = score; headerRow = row; }
+                const seen = new Set();
+                for (const a of document.querySelectorAll('tr[id^="ccid_"] a.bold[href*="scores.html"]')) {
+                    try {
+                        const params = new URLSearchParams(a.getAttribute('href').split('?')[1] || '');
+                        const fg = params.get('fg');
+                        if (fg && /^[QqOo]\\d$/.test(fg)) seen.add(fg.toUpperCase());
+                    } catch(e) {}
                 }
-                if (!headerRow) return activeCols.map((_, i) => 'G' + (i + 1));
-
-                const flat = [];
-                for (const th of headerRow.querySelectorAll('th, td')) {
-                    const span = parseInt(th.getAttribute('colspan') || '1', 10);
-                    const t = (th.innerText || th.textContent || '').trim().replace(/\\s+/g, ' ');
-                    for (let i = 0; i < span; i++) flat.push(t);
-                }
-
-                // Map each active column index to its header label
-                return activeCols.map((col, i) => {
-                    const t = col < flat.length ? flat[col] : '';
-                    return pat.test(t) ? t.toUpperCase() : 'G' + (i + 1);
-                });
+                return Array.from(seen).sort();
             }
         """)
-        if labels:
-            print(f"📋 Detected grade columns: {labels}")
-        return labels or []
+        if quarters:
+            current = quarters[-1]
+            print(f"📅 Current quarter: {current}  (active quarters with grades: {quarters})")
+            return current
     except Exception as e:
-        print(f"⚠️  Column label detection failed: {e}")
+        print(f"⚠️  Quarter detection failed: {e}")
+    print("📅 Falling back to Q3")
+    return "Q3"
+
+
+async def get_available_quarters(page: Page) -> list:
+    """Return all Q-labeled quarters that have real grade links on the page."""
+    try:
+        quarters = await page.evaluate("""
+            () => {
+                const seen = new Set();
+                for (const a of document.querySelectorAll('tr[id^="ccid_"] a.bold[href*="scores.html"]')) {
+                    try {
+                        const params = new URLSearchParams(a.getAttribute('href').split('?')[1] || '');
+                        const fg = params.get('fg');
+                        if (fg && /^[Qq]\\d$/.test(fg)) seen.add(fg.toUpperCase());
+                    } catch(e) {}
+                }
+                return Array.from(seen).sort();
+            }
+        """)
+        return quarters or []
+    except Exception:
         return []
 
 
@@ -251,134 +229,88 @@ def normalize_grade(raw: str):
 
 async def scrape_grades(page: Page) -> list:
     """
-    Scrape PowerSchool grade rows and extract course name and all quarter grades.
-    Dynamically detects column labels (Q1, Q2, Q3, Q4, Y1, etc.) from the table header.
+    Scrape all quarter grades for every course by reading fg= from each bold grade link href.
+    Only counts a.bold links to scores.html — skips [ i ] info links and attendance links.
 
     Returns:
-        list of dicts: [{"course": "...", "grades": {"Q1": {...}, "Q3": {...}, "Y1": {...}}}, ...]
+        list of dicts: [{"course": "...", "type": "AP|Regular", "grades": {"Q1": {...}, "Q4": {...}}}, ...]
     """
     print("🔎 Waiting for grades table...")
     try:
-        await page.wait_for_selector('tbody tr[id^="ccid_"]', timeout=15000)
+        await page.wait_for_selector('tr[id^="ccid_"]', timeout=15000)
     except Exception as e:
         print(f"❌ Grades table not found: {e}")
         return []
 
-    # Detect grade column labels from the table header
-    grade_labels = await get_grade_column_labels(page)
+    results = await page.evaluate("""
+        () => {
+            const rows = Array.from(document.querySelectorAll('tr[id^="ccid_"]'));
+            const out = [];
+            for (const row of rows) {
+                const courseEl = row.querySelector('td.table-element-text-align-start');
+                if (!courseEl) continue;
+                const course = (courseEl.innerText || courseEl.textContent)
+                    .trim().split('\\n')[0].trim();
+                if (!course) continue;
 
-    rows = page.locator('tbody tr[id^="ccid_"]')
-    count = await rows.count()
-    print(f"🔢 Found {count} course rows.")
+                const grades = {};
+                // Only bold links to scores.html have real grade data
+                for (const a of row.querySelectorAll('a.bold[href*="scores.html"]')) {
+                    try {
+                        const params = new URLSearchParams(
+                            a.getAttribute('href').split('?')[1] || ''
+                        );
+                        const fg = params.get('fg');
+                        if (!fg) continue;
+                        const parts = (a.innerText || a.textContent).trim()
+                            .split('\\n').map(s => s.trim()).filter(Boolean);
+                        if (parts.length >= 2) {
+                            const letter = parts[0];
+                            const num = parseInt(parts[parts.length - 1], 10);
+                            if (letter && !isNaN(num)) {
+                                grades[fg.toUpperCase()] = { letter, numeric: num };
+                            }
+                        }
+                    } catch(e) {}
+                }
 
-    results = []
-    for i in range(count):
-        row = rows.nth(i)
+                if (Object.keys(grades).length === 0) continue;
+                const courseType = course.startsWith('AP ') ? 'AP' : 'Regular';
+                out.push({ course, type: courseType, grades });
+            }
+            return out;
+        }
+    """)
 
-        # Course name
-        try:
-            course_raw = (await row.locator('td.table-element-text-align-start').inner_text()).strip()
-            course = course_raw.splitlines()[0].strip()
-            course_type = "AP" if course[:2].upper() == "AP" else "Regular"
-        except Exception as e:
-            print(f"⚠️  Couldn't read course name for row {i}: {e}")
-            continue
-
-        grades_links = row.locator('td a.bold')
-        gl_count = await grades_links.count()
-        grades_dict = {}
-
-        # Read every grade link and label it using detected column headers
-        for k in range(gl_count):
-            label = grade_labels[k] if k < len(grade_labels) else f"G{k + 1}"
-            try:
-                raw = (await grades_links.nth(k).inner_text()).strip()
-                parts = [p.strip() for p in raw.splitlines() if p.strip()]
-                if len(parts) >= 2:
-                    try:
-                        norm = {"letter": parts[0], "numeric": int(parts[-1])}
-                    except ValueError:
-                        norm = normalize_grade(" ".join(parts))
-                else:
-                    norm = normalize_grade(" ".join(parts))
-                if norm:
-                    grades_dict[label] = norm
-            except Exception as e:
-                print(f"⚠️  Error parsing {label} for {course}: {e}")
-
-        # ARIA fallback: if grade links yielded nothing, scan td[role=cell] aria-labels
-        if not grades_dict:
-            grade_cells = row.locator('td[role="cell"]')
-            gcount = await grade_cells.count()
-            grade_texts = []
-            for j in range(gcount):
-                cell = grade_cells.nth(j)
-                try:
-                    aria = await cell.get_attribute('aria-label')
-                except Exception:
-                    aria = None
-                try:
-                    text = (aria or (await cell.inner_text() or '')).strip()
-                except Exception:
-                    text = aria or ''
-                if text and re.search(r'\d', text):
-                    grade_texts.append(text)
-
-            for k, text in enumerate(grade_texts):
-                norm = normalize_grade(text)
-                if norm:
-                    label = grade_labels[k] if k < len(grade_labels) else f"G{k + 1}"
-                    grades_dict[label] = norm
-
-        if not grades_dict:
-            print(f"⚠️  Skipping {course!r}: no grades found (link_count={gl_count})")
-            continue
-
-        results.append({
-            "course": course,
-            "type": course_type,
-            "grades": grades_dict,
-        })
-
+    print(f"🔢 Found {len(results)} courses with grades.")
     return results
 
 
-async def scrape_current_quarter_assignments(page: Page, grade_labels: list) -> list:
+async def scrape_current_quarter_assignments(page: Page, current_quarter: str) -> list:
     """
-    Click into each course's CURRENT quarter detail link and scrape assignment-level data.
-    Automatically detects the latest active quarter from the detected grade column labels.
+    Click into each course's current quarter detail page and scrape assignment data.
+    Finds the right link by href containing fg={current_quarter} — no index guessing.
 
     Returns a list of dicts:
     [
       {
         "course": "AP English",
-        "quarter": "Q3",
-        "letter_grade": "B-",
-        "numeric_grade": 80,
+        "quarter": "Q4",
+        "letter_grade": "A",
+        "numeric_grade": 95,
         "assignments": [ {name, earned, possible, percent, category}, ... ]
       },
       ...
     ]
     """
-    # Find the last Q/O column (current quarter) — skip Y1/E1/S1 year-summary labels
-    quarter_cols = [
-        (i, lbl) for i, lbl in enumerate(grade_labels)
-        if re.match(r'^[QqOo]\d$', lbl)
-    ]
-    if quarter_cols:
-        current_idx, current_label = quarter_cols[-1]
-    else:
-        # Fallback: assume 2nd link = current quarter (old Q2 behavior)
-        current_idx, current_label = 1, "Q2"
-
-    print(f"🔎 Scraping assignment details for {current_label} (link index {current_idx})...")
+    print(f"🔎 Scraping assignment details for {current_quarter}...")
     try:
-        await page.wait_for_selector('tbody tr[id^="ccid_"]', timeout=15000)
+        await page.wait_for_selector('tr[id^="ccid_"]', timeout=15000)
     except Exception as e:
-        print(f"❌ Cannot find course rows to click into: {e}")
+        print(f"❌ Cannot find course rows: {e}")
         return []
 
-    rows = page.locator('tbody tr[id^="ccid_"]')
+    rows = page.locator('tr[id^="ccid_"]')
     count = await rows.count()
     details = []
 
@@ -392,19 +324,19 @@ async def scrape_current_quarter_assignments(page: Page, grade_labels: list) -> 
             print(f"⚠️  Couldn't read course name for detail row {i}: {e}")
             continue
 
-        grades_links = row.locator('td a.bold')
-        gl_count = await grades_links.count()
-        if gl_count <= current_idx:
-            print(f"⚠️  No {current_label} link for {course} (only {gl_count} links), skipping")
+        # Find the quarter link directly by fg= in href — no positional index needed
+        quarter_link = row.locator(f'a.bold[href*="scores.html"][href*="fg={current_quarter}"]')
+        if await quarter_link.count() == 0:
+            print(f"⚠️  No {current_quarter} grade for {course}, skipping")
             continue
 
         try:
-            raw = (await grades_links.nth(current_idx).inner_text()).strip()
+            raw = (await quarter_link.inner_text()).strip()
             parts = [p.strip() for p in raw.splitlines() if p.strip()]
             letter = parts[0] if parts else None
             numeric = int(parts[-1]) if parts and re.search(r'\d', parts[-1]) else None
         except Exception as e:
-            print(f"⚠️  Couldn't parse {current_label} grade for {course}: {e}")
+            print(f"⚠️  Couldn't parse {current_quarter} grade for {course}: {e}")
             letter = None
             numeric = None
 
@@ -412,90 +344,99 @@ async def scrape_current_quarter_assignments(page: Page, grade_labels: list) -> 
         try:
             try:
                 async with page.expect_navigation(timeout=7000):
-                    await grades_links.nth(current_idx).click()
+                    await quarter_link.click()
                 detail_page = page
             except Exception:
                 try:
                     async with page.context.expect_page(timeout=7000) as popup_info:
-                        await grades_links.nth(current_idx).click()
+                        await quarter_link.click()
                     detail_page = await popup_info.value
                     await detail_page.wait_for_load_state('networkidle')
                 except Exception:
-                    await grades_links.nth(current_idx).click()
+                    await quarter_link.click()
                     await page.wait_for_load_state('networkidle')
                     detail_page = page
         except Exception as e:
-            print(f"⚠️  Clicking into {current_label} for {course} failed: {e}")
+            print(f"⚠️  Clicking into {current_quarter} for {course} failed: {e}")
             continue
 
         assignments = []
         try:
             await detail_page.wait_for_selector('table#scoreTable tbody', timeout=7000)
-            assign_rows = detail_page.locator('table#scoreTable tbody tr[role="row"]')
-            ar_count = await assign_rows.count()
-            for j in range(ar_count):
-                ar = assign_rows.nth(j)
+            raw_rows = await detail_page.evaluate("""
+                () => {
+                    // Flag names from header columns
+                    const flagNames = [];
+                    const headerCols = document.querySelectorAll(
+                        'table#scoreTable thead th.codeCol, table#scoreTable thead td.codeCol'
+                    );
+                    headerCols.forEach(th => {
+                        flagNames.push(
+                            (th.getAttribute('title') || th.textContent || '').trim()
+                        );
+                    });
 
-                try:
-                    row_text = (await ar.inner_text() or '').strip()
-                except Exception:
-                    row_text = ''
-                if 'Assignment Score Or Flag Last Updated' in row_text:
-                    break
+                    const out = [];
+                    const rows = document.querySelectorAll(
+                        'table#scoreTable tbody tr[role="row"]'
+                    );
+                    for (const row of rows) {
+                        if ((row.textContent || '').includes(
+                            'Assignment Score Or Flag Last Updated'
+                        )) break;
 
-                try:
-                    due = (await ar.locator('td').nth(0).inner_text()).strip()
-                except Exception:
-                    due = None
+                        const tds = row.querySelectorAll('td');
 
-                try:
-                    cat = (await ar.locator('td.categorycol').inner_text()).strip()
-                    cat = ' '.join(cat.split()) if cat else None
-                except Exception:
-                    cat = None
+                        const due = tds[0] ? tds[0].textContent.trim() : null;
 
-                try:
-                    name = (await ar.locator('td.assignmentcol span.ng-binding').inner_text()).strip()
-                except Exception:
-                    name = (await ar.locator('td.assignmentcol').inner_text()).strip()
+                        const catEl = row.querySelector('td.categorycol');
+                        const cat = catEl
+                            ? catEl.textContent.trim().replace(/\\s+/g, ' ')
+                            : null;
 
-                flags = []
-                try:
-                    code_cells = ar.locator('td.codeCol')
-                    cc = await code_cells.count()
-                    for k in range(cc):
-                        txt = (await code_cells.nth(k).inner_text()).strip()
-                        if txt:
-                            flags.append(' '.join(txt.split()))
-                except Exception:
-                    pass
+                        const nameEl =
+                            row.querySelector('td.assignmentcol span.ng-binding') ||
+                            row.querySelector('td.assignmentcol');
+                        const name = nameEl
+                            ? (nameEl.innerText || nameEl.textContent)
+                                  .trim().split('\\n')[0].trim()
+                            : null;
+                        if (!name) continue;
 
-                tds = ar.locator('td')
-                tc = await tds.count()
-                score_text = ''
-                percent_text = ''
-                grade_text = ''
-                score_idx = None
-                for k in range(tc):
-                    cls = (await tds.nth(k).get_attribute('class')) or ''
-                    if 'score' in cls:
-                        score_idx = k
-                        break
-                if score_idx is not None:
-                    try:
-                        score_text = (await tds.nth(score_idx).inner_text()).strip()
-                    except Exception:
-                        score_text = ''
-                    if score_idx + 1 < tc:
-                        try:
-                            percent_text = (await tds.nth(score_idx + 1).inner_text()).strip()
-                        except Exception:
-                            percent_text = ''
-                    if score_idx + 2 < tc:
-                        try:
-                            grade_text = (await tds.nth(score_idx + 2).inner_text()).strip()
-                        except Exception:
-                            grade_text = ''
+                        // A flag is active only when its cell contains an <img> indicator.
+                        // Inactive cells are empty or contain visually-hidden label text.
+                        const flags = [];
+                        const codeCols = row.querySelectorAll('td.codeCol');
+                        codeCols.forEach((td, i) => {
+                            const img = td.querySelector('img');
+                            if (img) {
+                                const label = flagNames[i] ||
+                                    img.getAttribute('alt') ||
+                                    img.getAttribute('title') || '';
+                                if (label) flags.push(label);
+                            }
+                        });
+
+                        let scoreText = '', percentText = '', gradeText = '';
+                        for (let k = 0; k < tds.length; k++) {
+                            if ((tds[k].className || '').includes('score')) {
+                                scoreText = tds[k].textContent.trim();
+                                if (tds[k + 1]) percentText = tds[k + 1].textContent.trim();
+                                if (tds[k + 2]) gradeText = tds[k + 2].textContent.trim();
+                                break;
+                            }
+                        }
+
+                        out.push({ due, cat, name, flags, scoreText, percentText, gradeText });
+                    }
+                    return out;
+                }
+            """)
+
+            for row in raw_rows:
+                score_text = row.get('scoreText', '')
+                percent_text = row.get('percentText', '')
+                grade_text = row.get('gradeText', '')
 
                 earned = None
                 possible = None
@@ -517,15 +458,17 @@ async def scrape_current_quarter_assignments(page: Page, grade_labels: list) -> 
                         if m:
                             percent = float(m.group(1))
                             possible = possible or 100.0
-                            earned = earned or (round((percent / 100.0) * possible, 2) if possible else earned)
+                            earned = earned or (
+                                round((percent / 100.0) * possible, 2) if possible else earned
+                            )
                 except Exception:
                     pass
 
                 assignments.append({
-                    'name': name,
-                    'due_date': due,
-                    'category': cat,
-                    'flags': flags,
+                    'name': row['name'],
+                    'due_date': row.get('due'),
+                    'category': row.get('cat'),
+                    'flags': row.get('flags', []),
                     'earned': earned,
                     'possible': possible,
                     'percent': percent,
@@ -536,7 +479,7 @@ async def scrape_current_quarter_assignments(page: Page, grade_labels: list) -> 
 
         details.append({
             "course": course,
-            "quarter": current_label,
+            "quarter": current_quarter,
             "letter_grade": letter,
             "numeric_grade": numeric,
             "assignments": assignments
@@ -547,7 +490,7 @@ async def scrape_current_quarter_assignments(page: Page, grade_labels: list) -> 
                 await detail_page.close()
             else:
                 await page.go_back()
-                await page.wait_for_selector('tbody tr[id^="ccid_"]', timeout=10000)
+                await page.wait_for_selector('tr[id^="ccid_"]', timeout=10000)
         except Exception:
             pass
 
@@ -617,23 +560,22 @@ def save_to_db(grades_data: dict):
     print(f"✅ Saved to formal.db (scraped_at={scraped_at})")
 
 
-async def main(creds=None):
+async def main(creds=None, quarter: str = None):
     """
     Main function to run the scraper.
     Pass creds=(email, username, password) to skip the prompt.
+    Pass quarter='Q3' to force a specific quarter instead of auto-detecting.
     """
     email, username, password = creds if creds else get_credentials()
-    
+
     print(f"\n Starting browser automation...")
     print(f" Target: {POWERSCHOOL_URL}\n")
-    
+
     # Start Playwright
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
-
-        await save_screenshot(page, "01_start")
 
         # Perform login
         success = await login_with_google_sso(page, email, username, password)
@@ -643,28 +585,33 @@ async def main(creds=None):
             print(" LOGIN COMPLETE!")
             print("="*60)
 
-            await save_screenshot(page, "02_home_grades_table")
-
-            # Detect grade column labels from the table header
-            grade_labels = await get_grade_column_labels(page)
-
-            # Scrape all quarter grades
+            # Scrape all quarter grades (reads fg= from each link href)
             grades = await scrape_grades(page)
             if grades:
-                await save_screenshot(page, "03_after_grade_scrape")
+                scrape_all = quarter and quarter.upper() == 'ALL'
 
-                # Scrape current-quarter assignment details
-                current_details = await scrape_current_quarter_assignments(page, grade_labels)
+                if scrape_all:
+                    quarters_to_scrape = await get_available_quarters(page)
+                    print(f"📅 Scraping ALL quarters: {quarters_to_scrape}")
+                elif quarter:
+                    quarters_to_scrape = [quarter.upper()]
+                    print(f"📅 Using specified quarter: {quarter.upper()}")
+                else:
+                    quarters_to_scrape = [await detect_current_quarter(page)]
 
-                await save_screenshot(page, "04_after_assignments")
+                # Scrape assignment details for each selected quarter
+                all_details = []
+                for q in quarters_to_scrape:
+                    print(f"\n── Scraping {q} assignments ──")
+                    details = await scrape_current_quarter_assignments(page, q)
+                    all_details.extend(details)
 
-                # Merge assignments into grades by course name
+                # Merge assignments into grades (no break — collect every quarter per course)
                 for g in grades:
-                    for d in current_details:
+                    for d in all_details:
                         if g.get('course') and d.get('course') and g['course'].lower() == d['course'].lower():
                             q_label = d.get('quarter', 'Q?')
                             g.setdefault('assignments', {})[q_label] = d.get('assignments', [])
-                            break
 
                 out_path = 'grades.json'
                 try:
@@ -681,7 +628,6 @@ async def main(creds=None):
             else:
                 print("⚠️ No grades extracted.")
         else:
-            await save_screenshot(page, "02_login_failed")
             print("\n❌ Login failed.")
 
         await browser.close()
