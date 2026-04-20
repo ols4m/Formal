@@ -1,4 +1,47 @@
 {
-  "scraped_at": "2026-04-20T13:28:57.613016Z",
-  "missing": []
+  "scraped_at": "2026-04-20T15:03:22.059667Z",
+  "missing": [
+    {
+      "title": "Tuesday 4/14 Nested Loops vs Dictionaries",
+      "course": "Programming in Python - Campbell- 6(A-E)",
+      "due": "Thursday, Apr 16",
+      "url": "https://classroom.google.com/u/0/c/Nzk1NTg1MTEwNDIz/a/ODU5NjgwMzYyMTUy/details"
+    },
+    {
+      "title": "Monday 4/13 Nested Dictionaries",
+      "course": "Programming in Python - Campbell- 6(A-E)",
+      "due": "Tuesday, Apr 14",
+      "url": "https://classroom.google.com/u/0/c/Nzk1NTg1MTEwNDIz/a/ODU5NDQxNDE2Njcx/details"
+    },
+    {
+      "title": "Contact your schools for financial aid and schedule family decision meetings!",
+      "course": "College Seminar 12 - Lurie - 3(B-D)",
+      "due": "Friday, Apr 3",
+      "url": "https://classroom.google.com/u/0/c/Nzk1NTg1MTQwMTQ3/a/ODU4NTc4MDE1Njcy/details"
+    },
+    {
+      "title": "Escape the Constitutional Crisis - Escape Room",
+      "course": "AP US Government and Politics - Watkins - 4(A-E)",
+      "due": "Friday, Mar 27",
+      "url": "https://classroom.google.com/u/0/c/Nzk1NTg0OTM1MzQw/a/ODU3Njg4NTUyOTk2/details"
+    },
+    {
+      "title": "Wednesday 3/25 2D Lists Day 3",
+      "course": "Programming in Python - Campbell- 6(A-E)",
+      "due": "Thursday, Mar 26",
+      "url": "https://classroom.google.com/u/0/c/Nzk1NTg1MTEwNDIz/a/ODU3NDczMzU5NzEz/details"
+    },
+    {
+      "title": "Tuesday 3/24 2D Lists Day 2",
+      "course": "Programming in Python - Campbell- 6(A-E)",
+      "due": "Wednesday, Mar 25",
+      "url": "https://classroom.google.com/u/0/c/Nzk1NTg1MTEwNDIz/a/ODU3MjcwMTA2MzI1/details"
+    },
+    {
+      "title": "Q3 Quiz Grade!! Upload all Financial Aid Letters to your College Folder by 3/11",
+      "course": "College Seminar 12 - Lurie - 3(B-D)",
+      "due": "Wednesday, Mar 11",
+      "url": "https://classroom.google.com/u/0/c/Nzk1NTg1MTQwMTQ3/a/ODUwMTc2MjY5NzMy/details"
+    }
+  ]
 }

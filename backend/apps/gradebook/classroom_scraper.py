@@ -24,10 +24,26 @@ from core.db import get_db, init_db
 CLASSROOM_URL = "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fclassroom.google.com%2Fu%2F1%2F&dsh=S-753428510%3A1767229623173503&emr=1&followup=https%3A%2F%2Fclassroom.google.com%2Fu%2F1%2F&ifkv=Ac2yZaWIPYfvdmN1lJnGFG16T9CAfM2INZldwt173-yzQjkxpzwX3iTl39ccXVNbUkd9twTIpG4j&passive=1209600&service=classroom&flowName=GlifWebSignIn&flowEntry=ServiceLogin"
 
 os.makedirs('output', exist_ok=True)
-JSON_PATH    = 'output/assignments.json'
-MISSING_PATH = 'output/missing.json'
+JSON_PATH             = 'output/assignments.json'
+MISSING_PATH          = 'output/missing.json'
+MISSING_IMPACTFUL_PATH = 'output/missing_impactful.json'
 
 MISSING_URL = "https://classroom.google.com/u/1/a/missing/all"
+
+# Patterns that reliably indicate a non-graded survey/question item
+_SURVEY_PATTERNS = re.compile(
+    r'^(are you|do you|have you|will you|did you|can you|please (sign|fill|complete the survey))',
+    re.IGNORECASE
+)
+_SURVEY_SUFFIXES = re.compile(r'\?$')
+
+# Closed quarter strings as they appear in the detail-page quarter field
+_CLOSED_QUARTER_FIELD = re.compile(r'quarter\s+[123]', re.IGNORECASE)
+# Closed quarter mentions in the assignment title (e.g. "Q3 Quiz")
+_CLOSED_QUARTER_TITLE = re.compile(r'\bQ[123]\b', re.IGNORECASE)
+
+# Q4 start date — assignments due before this are already locked into a closed quarter
+Q4_START = datetime(2026, 4, 1)
 
 
 # ==========================================
@@ -386,6 +402,15 @@ async def scrape_assignment_details(page: Page, assignment_url: str):
 # PART 3: NORMALIZER
 # ==========================================
 
+_HW_TIME = re.compile(r'\b(7:55\s*AM|11:59\s*PM)\b', re.IGNORECASE)
+
+def infer_category_from_due_time(due_date_full: str | None) -> str | None:
+    """Return 'Homework' if due time is 7:55 AM or 11:59 PM, else None."""
+    if due_date_full and _HW_TIME.search(due_date_full):
+        return 'Homework'
+    return None
+
+
 def normalize(raw: dict, details: dict = None):
     """Normalize raw extracted data for clean JSON output.
     
@@ -421,7 +446,11 @@ def normalize(raw: dict, details: dict = None):
         # Override possible_points if we got it from detail page (more reliable)
         if details.get('points'):
             result['possible_points'] = details.get('points')
-    
+
+    # Infer category from due time when teacher didn't set one
+    if not result['category']:
+        result['category'] = infer_category_from_due_time(result.get('due_date_full'))
+
     return result
 
 
@@ -546,6 +575,97 @@ async def inject_dashboard_watcher(page: Page):
 # PART 6: MISSING ASSIGNMENTS SCRAPER
 # ==========================================
 
+async def _fetch_assignment_points_and_quarter(page: Page, url: str) -> tuple[int | None, str | None]:
+    """Visit an assignment detail page and return (points_possible, quarter)."""
+    try:
+        await page.goto(url, timeout=15000)
+        await page.wait_for_load_state('networkidle', timeout=10000)
+    except Exception:
+        pass
+    html = await page.content()
+    details = extract_details_from_assignment_page(html)
+    return details.get('points'), details.get('quarter')
+
+
+def _parse_due_date(due_str: str) -> datetime | None:
+    """
+    Parse a due string like 'Thursday, Mar 26' or 'Friday, Apr 3' into a datetime.
+    Assumes current school year (2025-2026); adjusts year if month implies prior year.
+    """
+    if not due_str:
+        return None
+    # Strip weekday prefix if present
+    parts = due_str.split(',', 1)
+    date_part = parts[-1].strip()
+    for fmt in ('%b %d', '%B %d'):
+        try:
+            parsed = datetime.strptime(date_part, fmt)
+            year = 2026 if parsed.month >= 1 else 2025
+            return parsed.replace(year=year)
+        except ValueError:
+            continue
+    return None
+
+
+async def filter_impactful_missing(page: Page, missing: list) -> list:
+    """
+    Return only missing assignments that will still affect the current grade:
+      1. Skip surveys / question-style items (title heuristic)
+      2. Skip closed-quarter items — checked in order of reliability:
+           a. Title contains Q1/Q2/Q3
+           b. Detail-page quarter field says Quarter 1/2/3
+           c. Due date falls before Q4_START (fallback for teachers who omit quarter)
+      3. Skip 0-point / ungraded items
+    Adds 'points_possible' and 'quarter' fields to each kept item.
+    """
+    impactful = []
+    skipped   = 0
+
+    for item in missing:
+        title = item.get('title', '')
+
+        # 1. Survey / question check (fast, no network)
+        if _SURVEY_PATTERNS.search(title) or _SURVEY_SUFFIXES.search(title):
+            print(f'  ⏭  skipped (survey): {title[:60]}')
+            skipped += 1
+            continue
+
+        # 2a. Closed-quarter mention in title
+        if _CLOSED_QUARTER_TITLE.search(title):
+            print(f'  ⏭  skipped (Q1-3 in title): {title[:60]}')
+            skipped += 1
+            continue
+
+        # 2c. Due-date check before fetching detail page (saves network round-trips)
+        due_dt = _parse_due_date(item.get('due', ''))
+        if due_dt and due_dt < Q4_START:
+            print(f'  ⏭  skipped (due {item["due"]} < Q4): {title[:60]}')
+            skipped += 1
+            continue
+
+        # Fetch detail page for points + authoritative quarter
+        points, quarter = await _fetch_assignment_points_and_quarter(page, item['url'])
+
+        # 2b. Detail-page quarter field says Q1/Q2/Q3
+        if quarter and _CLOSED_QUARTER_FIELD.search(quarter):
+            print(f'  ⏭  skipped (detail quarter={quarter}): {title[:60]}')
+            skipped += 1
+            continue
+
+        # 3. Ungraded / 0-point check
+        if points is not None and points == 0:
+            print(f'  ⏭  skipped (0 pts): {title[:60]}')
+            skipped += 1
+            continue
+
+        enriched = {**item, 'points_possible': points, 'quarter': quarter}
+        impactful.append(enriched)
+        print(f'  ✅ kept ({points} pts, {quarter}): {title[:60]}')
+
+    print(f'\n📊 {len(impactful)} impactful missing / {skipped} filtered out')
+    return impactful
+
+
 async def scrape_missing_assignments(page: Page) -> list:
     """
     Navigate to the Google Classroom Missing tab and return all missing assignments.
@@ -561,96 +681,49 @@ async def scrape_missing_assignments(page: Page) -> list:
     # Give dynamic content time to render
     await asyncio.sleep(4)
 
-    # DEBUG: dump what's actually on the page so we can find the right selectors
-    debug_info = await page.evaluate("""
-        () => {
-            const roles = {};
-            for (const el of document.querySelectorAll('[role]')) {
-                const r = el.getAttribute('role');
-                roles[r] = (roles[r] || 0) + 1;
-            }
-            // grab first link that looks like an assignment
-            const links = Array.from(document.querySelectorAll('a[href*="/c/"]')).slice(0, 5);
-            const linkData = links.map(a => ({
-                href: a.getAttribute('href'),
-                aria: a.getAttribute('aria-label'),
-                text: (a.innerText || '').trim().slice(0, 100),
-                parentText: (a.parentElement?.innerText || '').trim().slice(0, 200)
-            }));
-            // grab body text sample
-            const bodyText = (document.body.innerText || '').slice(0, 1000);
-            return { roles, linkData, bodyText };
-        }
-    """)
-    print('\n--- DEBUG MISSING PAGE ---')
-    import json as _json
-    print(_json.dumps(debug_info, indent=2))
-    print('--- END DEBUG ---\n')
-
     results = await page.evaluate("""
         () => {
             const out = [];
+            // li.MHxtic = each missing assignment card
+            for (const item of document.querySelectorAll('li.MHxtic')) {
+                const link = item.querySelector('a.nUg0Te');
+                if (!link) continue;
 
-            // Each missing assignment sits in a role="listitem" element.
-            // Inside: one or more <a> links and text nodes for course/title/due.
-            const items = Array.from(document.querySelectorAll('[role="listitem"]'));
-
-            for (const item of items) {
-                // Skip navigation listitems (they have no anchor with an assignment href)
-                const links = Array.from(item.querySelectorAll('a[href*="/c/"]'));
-                if (links.length === 0) continue;
-
-                // Pull all visible text lines
-                const raw = (item.innerText || item.textContent || '').trim();
-                const lines = raw.split('\\n').map(s => s.trim()).filter(Boolean);
-
-                let title = null, course = null, due = null, url = null;
-
-                // The primary link href tells us course id and assignment id
-                const primaryLink = links[0];
-                url = primaryLink
-                    ? 'https://classroom.google.com' + primaryLink.getAttribute('href')
-                    : null;
-
-                // aria-label on the link often has the full "Assignment Title — Course"
-                const ariaLabel = primaryLink ? primaryLink.getAttribute('aria-label') : null;
-                if (ariaLabel) {
-                    // format: "Title, Course Name"  or  "Title"
-                    const parts = ariaLabel.split(',');
-                    title = parts[0].trim();
-                    if (parts.length > 1) course = parts.slice(1).join(',').trim();
-                }
-
-                // Fill any gaps from line text
-                for (const line of lines) {
-                    if (!title && line.length > 2) { title = line; continue; }
-                    if (!course && line.length > 2 && !line.match(/^Due|^No due|^Missing/i)) {
-                        course = line; continue;
-                    }
-                    if (!due && line.match(/due|missing|no due/i)) { due = line; }
-                }
+                const title  = (item.querySelector('p.oDLUVd')  || {}).innerText?.trim() || null;
+                const course = (item.querySelector('p.tWeh6')   || {}).innerText?.trim() || null;
+                const due    = (item.querySelector('p.pOf0gc')  || {}).innerText?.trim() || null;
+                const url    = link.href || ('https://classroom.google.com' + link.getAttribute('href'));
 
                 if (!title) continue;
-
                 out.push({ title, course, due, url });
             }
-
             return out;
         }
     """)
 
     print(f'📋 Found {len(results)} missing assignment(s).')
 
-    # Persist to output/missing.json
+    # Persist raw list to output/missing.json
     data = {
         'scraped_at': datetime.utcnow().isoformat() + 'Z',
         'missing': results
     }
     with open(MISSING_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    print(f'💾 Saved → {MISSING_PATH}')
+    print(f'💾 Saved raw → {MISSING_PATH}')
 
-    return results
+    # Filter to only grade-impacting assignments and save separately
+    print('\n🔍 Checking which missing assignments will impact your grade...')
+    impactful = await filter_impactful_missing(page, results)
+    impactful_data = {
+        'scraped_at': datetime.utcnow().isoformat() + 'Z',
+        'missing': impactful
+    }
+    with open(MISSING_IMPACTFUL_PATH, 'w', encoding='utf-8') as f:
+        json.dump(impactful_data, f, indent=2, ensure_ascii=False)
+    print(f'💾 Saved impactful → {MISSING_IMPACTFUL_PATH}')
+
+    return impactful
 
 
 # ==========================================
@@ -814,11 +887,14 @@ async def main(creds=None):
                     print(f'   ⏳ Still watching... ({check_count} checks)')
                 
                 await asyncio.sleep(1)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             print('\n🛑 Watcher stopped by user.')
         finally:
-            await browser.close()
-            print('✅ Browser closed. Assignments saved to:', JSON_PATH)
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            print('✅ Done. Assignments saved to:', JSON_PATH)
 
 
 

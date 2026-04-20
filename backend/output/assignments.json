@@ -47,6 +47,22 @@
       "due_date_full": "Due Apr 25",
       "quarter": null,
       "instructions": null
+    },
+    {
+      "source": "google_classroom_dashboard",
+      "timestamp": "2026-04-20T14:20:21.088068",
+      "course_name": "AP English Literature and Composition - Ayres - 1(A-E) 7(A)",
+      "teacher": "Liam Ayres",
+      "assignment_title": "\"Breath\" Prose Analysis Essay Planning Page",
+      "due_raw": "Due tomorrow",
+      "due_date": "2026-04-21",
+      "possible_points": null,
+      "url": "https://classroom.google.com/u/0/c/Nzk1NTg0NTMwMjEx/a/ODYwNjEwNjIzODc5/details",
+      "category": null,
+      "posted_date": "2:20 PM",
+      "due_date_full": "Due Tomorrow, 11:55 AM",
+      "quarter": null,
+      "instructions": "Please complete a planning page for the attached Prose Analysis Prompt for a homework grade."
     }
   ]
 }
