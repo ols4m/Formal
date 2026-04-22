@@ -70,7 +70,8 @@ def init_db():
                 tier          TEXT,
                 days_left     INTEGER,
                 impact        REAL,
-                status        TEXT DEFAULT 'pending'
+                status        TEXT DEFAULT 'pending',
+                notes         TEXT
             );
         """)
     conn.close()

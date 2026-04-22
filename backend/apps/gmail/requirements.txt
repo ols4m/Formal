@@ -1,0 +1,9 @@
+playwright==1.57.0
+groq
+beautifulsoup4
+# Personal Gmail API (only needed for personal account mode)
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+# Local AI fallback classifier (optional — install separately)
+# ollama

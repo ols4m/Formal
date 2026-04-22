@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from apps.gradebook.powerschool_scraper import main as run_powerschool
 from apps.gradebook.classroom_scraper import main as run_classroom
 from apps.gradebook.calculator import generate_full_report, generate_trend_report, generate_missing_report
+from apps.gmail.gmail_scraper import main as run_gmail
 
 # Load .env from the backend directory (gitignored, never committed)
 load_dotenv(Path(__file__).parent / '.env')
@@ -111,7 +112,13 @@ async def main():
     print("─" * 60)
     print("STEP 4 — Missing Assignment Report")
     print("─" * 60)
-    generate_missing_report(missing_path='output/missing.json', grades_path='grades.json')
+    generate_missing_report(missing_path='output/missing_impactful.json', grades_path='grades.json')
+
+    print()
+    print("─" * 60)
+    print("STEP 5 — Gmail Intake (school + personal)")
+    print("─" * 60)
+    await run_gmail(creds=creds)
 
     print()
     print("=" * 60)

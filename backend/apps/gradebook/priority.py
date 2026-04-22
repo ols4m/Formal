@@ -161,6 +161,103 @@ def get_tier(priority: float, all_priorities: List[float]) -> str:
     if priority >= 0.003: return '🧱 C'
     return '💤 D'
 
+MAKEUP_POLICY_PATH = 'output/makeup_policy.json'
+
+
+# ==========================================
+# MAKEUP POLICY (dismiss system)
+# ==========================================
+
+def load_policy() -> dict:
+    if os.path.exists(MAKEUP_POLICY_PATH):
+        with open(MAKEUP_POLICY_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {'dismissed_exact': [], 'dismissed_keywords': []}
+
+
+def save_policy(policy: dict):
+    with open(MAKEUP_POLICY_PATH, 'w', encoding='utf-8') as f:
+        json.dump(policy, f, indent=2, ensure_ascii=False)
+
+
+def is_dismissed(policy: dict, course: str, title: str) -> bool:
+    for entry in policy.get('dismissed_exact', []):
+        if entry['course'] == course and entry['title'] == title:
+            return True
+    for entry in policy.get('dismissed_keywords', []):
+        if entry['course'] == course and entry['keyword'].lower() in title.lower():
+            return True
+    return False
+
+
+def run_dismiss_prompt(policy: dict, makeup_items: list) -> dict:
+    """After report, let user dismiss MAKEUP items by exact title or keyword."""
+    if not makeup_items:
+        return policy
+
+    while True:
+        # Filter out already-dismissed items so the list shrinks as you go
+        remaining = [r for r in makeup_items if not is_dismissed(policy, r['course'], r['title'])]
+        if not remaining:
+            print("\n  ✅ All MAKEUP items have been dismissed.")
+            break
+
+        print("\n" + "─" * 60)
+        print("MAKEUP ITEMS — mark any that can't be made up:")
+        for i, r in enumerate(remaining, 1):
+            print(f"  [{i}] {r['course'][:30]} — {r['title']}")
+
+        raw = input("\nEnter numbers to dismiss (or press Enter to finish): ").strip()
+        if not raw:
+            break
+
+        chosen = []
+        for tok in raw.split():
+            try:
+                idx = int(tok) - 1
+                if 0 <= idx < len(remaining):
+                    chosen.append(remaining[idx])
+            except ValueError:
+                pass
+
+        for item in chosen:
+            print(f"\n  \"{item['title']}\"")
+            print("  (1) Just this assignment")
+            print("  (2) Add a keyword — block all future assignments matching it in this course")
+            choice = input("  > ").strip()
+
+            if choice == '2':
+                kw = input("  Keyword (the repeating part of the title): ").strip()
+                if kw:
+                    policy['dismissed_keywords'].append({'course': item['course'], 'keyword': kw})
+                    print(f"  ✅ Saved — all future assignments containing \"{kw}\" in {item['course']} will be filtered")
+            else:
+                policy['dismissed_exact'].append({'course': item['course'], 'title': item['title']})
+                print(f"  ✅ Dismissed just this one")
+
+        save_policy(policy)
+
+    return policy
+
+
+# ==========================================
+# QUARTER DETECTION
+# ==========================================
+
+def detect_current_quarter(courses: list) -> str:
+    """Find the highest-numbered quarter that has assignment data."""
+    for q in ('Q4', 'Q3', 'Q2', 'Q1'):
+        for c in courses:
+            if c.get('assignments', {}).get(q):
+                return q
+    return 'Q4'
+
+
+def _is_late(flags: list) -> bool:
+    late_labels = {'late', 'l', 'ln'}
+    return any(f.lower().strip() in late_labels for f in (flags or []))
+
+
 # ==========================================
 # MAIN
 # ==========================================
@@ -168,78 +265,122 @@ def get_tier(priority: float, all_priorities: List[float]) -> str:
 def main():
     grades_data = load_json('grades.json')
     upcoming_data = load_json('output/assignments.json')
-    
-    if not grades_data or not upcoming_data:
-        print("❌ Missing data files. Ensure grades.json and output/assignments.json exist.")
+
+    if not grades_data:
+        print("❌ Missing grades.json — run the PowerSchool scraper first.")
         return
-        
-    upcoming_list = upcoming_data.get('assignments', [])
+
+    policy = load_policy()
     courses = grades_data.get('grades', [])
-    
+    current_q = detect_current_quarter(courses)
+    upcoming_list = (upcoming_data or {}).get('assignments', [])
+
     results = []
-    
+
+    # ── SOURCE 1: Upcoming assignments (Google Classroom) ──────────────────
     for item in upcoming_list:
         course_name = item.get('course_name', '')
-        title = item.get('assignment_title', '')
-        category = item.get('category') or 'Homework'
-        points = item.get('possible_points') or 100
-        due_date = parse_date(item.get('due_date'))
-        
-        # Match course
-        matching_course = None
-        for c in courses:
-            c_name = c.get('course', '')
-            if c_name in course_name or course_name in c_name:
-                matching_course = c
-                break
-        
+        title       = item.get('assignment_title', '')
+        category    = item.get('category') or 'Homework'
+        points      = item.get('possible_points') or 100
+        due_date    = parse_date(item.get('due_date'))
+
+        matching_course = next(
+            (c for c in courses if c.get('course', '') in course_name or course_name in c.get('course', '')),
+            None
+        )
         if not matching_course:
             continue
-            
-        # Get stats
-        q2_assignments = matching_course.get('assignments', {}).get('Q2', [])
-        cat_avg, cat_points = get_category_stats(q2_assignments, category)
-        
-        # Current Grade
-        grade_info = matching_course.get('grades', {}).get('O2') or matching_course.get('grades', {}).get('Q2', {})
-        current_grade = grade_info.get('numeric', 85)
-        
-        # Calculate
+
+        q_assignments = matching_course.get('assignments', {}).get(current_q, [])
+        _, cat_points = get_category_stats(q_assignments, category)
+
+        grade_info    = matching_course.get('grades', {}).get(current_q, {})
+        current_grade = grade_info.get('numeric') or 85.0
+
         calc = calculate_priority(category, points, current_grade, cat_points, due_date)
-        
         results.append({
-            'title': title,
-            'course': matching_course['course'],
-            'priority': calc['priority'],
-            'tier': '', # filled later
+            'source':    'UPCOMING',
+            'title':     title,
+            'course':    matching_course['course'],
+            'priority':  calc['priority'],
+            'tier':      '',
             'days_left': calc['metrics']['days_left'],
-            'category': category,
-            'impact': round(calc['metrics']['impact'] * 100, 1)
+            'category':  category,
         })
 
-    # Sort by priority descending
+    # ── SOURCE 2: Recoverable assignments (grades.json zeros + low scores) ─
+    for course in courses:
+        grade_info    = course.get('grades', {}).get(current_q, {})
+        current_grade = grade_info.get('numeric') or 85.0
+        q_assignments = course.get('assignments', {}).get(current_q, [])
+
+        for a in q_assignments:
+            earned   = a.get('earned')
+            possible = a.get('possible') or 0
+            flags    = a.get('flags', [])
+
+            if earned is None or possible <= 0:
+                continue
+
+            is_missing      = earned == 0.0
+            is_improvable   = earned < possible and not _is_late(flags)
+
+            if not (is_missing or is_improvable):
+                continue
+
+            category      = a.get('category') or 'Homework'
+            recoverable_pts = possible - earned  # points we can still gain
+            _, cat_points = get_category_stats(q_assignments, category)
+
+            # Urgency is max for past-due recoverable items — they're hurting the grade now
+            calc = calculate_priority(category, recoverable_pts, current_grade, cat_points, due_date=date.today())
+
+            source     = 'MISSING' if is_missing else 'MAKEUP'
+            title      = a.get('name', 'Unknown')
+            course_name = course['course']
+
+            if source == 'MAKEUP' and is_dismissed(policy, course_name, title):
+                continue
+
+            results.append({
+                'source':    source,
+                'title':     title,
+                'course':    course_name,
+                'priority':  calc['priority'],
+                'tier':      '',
+                'days_left': 0,
+                'category':  category,
+            })
+
+    if not results:
+        print("⚠️  No assignments to rank.")
+        return
+
     results.sort(key=lambda x: x['priority'], reverse=True)
-    
-    # Assign Tiers
+
     all_p = [r['priority'] for r in results]
     for r in results:
         r['tier'] = get_tier(r['priority'], all_p)
-        
-    # Output Report
-    print("=" * 80)
-    print(f"🚀 ASSIGNMENT PRIORITY LIST (Lookahead: {LOOKAHEAD_DAYS} days)")
-    print(f"Target: {TARGET_GRADE}% | Date: {date.today()}")
-    print("=" * 80)
-    print(f"{'TIER':<6} | {'PRIORITY':<8} | {'DAYS':<4} | {'COURSE':<25} | {'ASSIGNMENT'}")
-    print("-" * 80)
-    
+
+    print("=" * 90)
+    print(f"🚀 ASSIGNMENT PRIORITY LIST  |  Quarter: {current_q}  |  Target: {TARGET_GRADE}%  |  {date.today()}")
+    print("=" * 90)
+    print(f"{'TIER':<8} | {'SRC':<8} | {'DAYS':<5} | {'COURSE':<28} | {'ASSIGNMENT'}")
+    print("-" * 90)
+
     for r in results:
-        days_str = str(r['days_left']) if r['days_left'] >= 0 else "LATE"
-        print(f"{r['tier']:<6} | {r['priority']:>8.4f} | {days_str:<4} | {r['course'][:25]:<25} | {r['title']}")
-    
-    print("-" * 80)
-    print("Legend: S (Critical), A (High), B (Medium), C (Low), D (Minimal)")
-    print("=" * 80)
+        days_str = 'NOW' if r['source'] in ('MISSING', 'MAKEUP') else str(r['days_left'])
+        print(f"{r['tier']:<8} | {r['source']:<8} | {days_str:<5} | {r['course'][:28]:<28} | {r['title']}")
+
+    print("-" * 90)
+    print("SRC: UPCOMING=not yet due  MISSING=0 in gradebook  MAKEUP=low score, no late flag")
+    print("TIER: S=Critical  A=High  B=Medium  C=Low  D=Minimal")
+    print("=" * 90)
+
+    makeup_items = [r for r in results if r['source'] == 'MAKEUP']
+    run_dismiss_prompt(policy, makeup_items)
+
 
 if __name__ == "__main__":
     main()

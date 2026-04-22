@@ -37,13 +37,22 @@ _SURVEY_PATTERNS = re.compile(
 )
 _SURVEY_SUFFIXES = re.compile(r'\?$')
 
-# Closed quarter strings as they appear in the detail-page quarter field
-_CLOSED_QUARTER_FIELD = re.compile(r'quarter\s+[123]', re.IGNORECASE)
-# Closed quarter mentions in the assignment title (e.g. "Q3 Quiz")
-_CLOSED_QUARTER_TITLE = re.compile(r'\bQ[123]\b', re.IGNORECASE)
+# Quarter start dates — used to filter assignments from closed quarters
+QUARTER_STARTS = {
+    'Q1': datetime(2025, 9,  2),
+    'Q2': datetime(2025, 11, 4),
+    'Q3': datetime(2026, 1, 20),
+    'Q4': datetime(2026, 4,  1),
+}
 
-# Q4 start date — assignments due before this are already locked into a closed quarter
-Q4_START = datetime(2026, 4, 1)
+def _current_quarter_start() -> datetime:
+    """Return the start date of whichever quarter is currently active."""
+    today = datetime.now()
+    start = QUARTER_STARTS['Q1']
+    for q in ('Q1', 'Q2', 'Q3', 'Q4'):
+        if today >= QUARTER_STARTS[q]:
+            start = QUARTER_STARTS[q]
+    return start
 
 
 # ==========================================
@@ -247,10 +256,15 @@ def extract_assignment_from_dashboard_card(html: str):
 
     assignment_full_text = assignment_link.get_text(strip=True)
     
-    # Remove time prefix if present (e.g., "11:59 PM – Essay")
+    # Remove time prefix if present (e.g., "11:59 PM – Essay"), keep the time separately
     title_match = re.split(r'[–—\-]\s*', assignment_full_text, 1)
-    raw_title = title_match[1].strip() if len(title_match) > 1 else assignment_full_text.strip()
-    
+    if len(title_match) > 1:
+        raw_title = title_match[1].strip()
+        due_time = title_match[0].strip()  # e.g. "11:59 PM" or "7:55 AM"
+    else:
+        raw_title = assignment_full_text.strip()
+        due_time = None
+
     href = assignment_link.get('href', '')
     assignment_id_match = re.search(r'/a/([^/]+)/details', href)
     assignment_id = assignment_id_match.group(1) if assignment_id_match else None
@@ -266,6 +280,7 @@ def extract_assignment_from_dashboard_card(html: str):
             'raw_title': raw_title,
             'full_text': assignment_full_text,
             'due_raw': due_text,
+            'due_time': due_time,
             'due_absolute': due_date_absolute,
             'points': None,
             'url': f"https://classroom.google.com{href}" if href.startswith('/') else href
@@ -379,19 +394,30 @@ async def scrape_assignment_details(page: Page, assignment_url: str):
         # Navigate to the assignment detail page
         await page.goto(assignment_url)
         
-        # Wait for the detail page to load (look for the title or category elements)
+        # Wait for the detail page to load
         try:
             await page.wait_for_selector('h1.fOvfyc, div.W4hhKd', timeout=10000)
         except Exception:
             print(f'   ⚠️ Detail page did not load properly')
             return None
-        
-        # Get the page HTML
+
+        # Read due_date_full directly from live DOM — page.content() captures it
+        # before JS finishes rendering the time, so we pull it from the live DOM instead
+        due_date_full = await page.evaluate("""
+            () => {
+                const el = document.querySelector('div.W4hhKd div.BjHIWe');
+                return el ? el.innerText.trim() : null;
+            }
+        """)
+
+        # Get the rest from static HTML (already rendered by this point)
         html = await page.content()
-        
-        # Parse it
         details = extract_details_from_assignment_page(html)
-        
+
+        # Override with live DOM value which has the fully rendered time
+        if due_date_full:
+            details['due_date_full'] = due_date_full
+
         return details
         
     except Exception as e:
@@ -402,12 +428,17 @@ async def scrape_assignment_details(page: Page, assignment_url: str):
 # PART 3: NORMALIZER
 # ==========================================
 
-_HW_TIME = re.compile(r'\b(7:55\s*AM|11:59\s*PM)\b', re.IGNORECASE)
+_TEST_TITLE = re.compile(r'\b(test|exam)\b', re.IGNORECASE)
+_QUIZ_TITLE = re.compile(r'\bquiz\b', re.IGNORECASE)
+_HW_TIME    = re.compile(r'\b7:55\s*AM\b', re.IGNORECASE)
+_CW_TIME    = re.compile(r'\b([89]|1[0-2]|[1-9]):[0-5]\d\s*(AM|PM)\b', re.IGNORECASE)
 
-def infer_category_from_due_time(due_date_full: str | None) -> str | None:
-    """Return 'Homework' if due time is 7:55 AM or 11:59 PM, else None."""
-    if due_date_full and _HW_TIME.search(due_date_full):
-        return 'Homework'
+def infer_category(title: str | None, due_date_full: str | None) -> str | None:
+    t, d = title or '', due_date_full or ''
+    if _TEST_TITLE.search(t): return 'Tests'
+    if _QUIZ_TITLE.search(t): return 'Quizzes'
+    if _HW_TIME.search(d):    return 'Homework'
+    if _CW_TIME.search(d):    return 'Classwork'
     return None
 
 
@@ -447,9 +478,12 @@ def normalize(raw: dict, details: dict = None):
         if details.get('points'):
             result['possible_points'] = details.get('points')
 
-    # Infer category from due time when teacher didn't set one
+    # Infer category from due time when teacher didn't set one.
+    # Prefer due_date_full (detail page, e.g. "Due Tomorrow, 7:55 AM") but fall back
+    # to due_time from the dashboard card (e.g. "11:59 PM") which is always present.
     if not result['category']:
-        result['category'] = infer_category_from_due_time(result.get('due_date_full'))
+        due_time_hint = result.get('due_date_full') or raw.get('assignment', {}).get('due_time', '')
+        result['category'] = infer_category(result.get('assignment_title'), due_time_hint)
 
     return result
 
@@ -614,7 +648,7 @@ async def filter_impactful_missing(page: Page, missing: list) -> list:
       2. Skip closed-quarter items — checked in order of reliability:
            a. Title contains Q1/Q2/Q3
            b. Detail-page quarter field says Quarter 1/2/3
-           c. Due date falls before Q4_START (fallback for teachers who omit quarter)
+           c. Due date falls before the current quarter's start (fallback for teachers who omit quarter)
       3. Skip 0-point / ungraded items
     Adds 'points_possible' and 'quarter' fields to each kept item.
     """
@@ -630,25 +664,40 @@ async def filter_impactful_missing(page: Page, missing: list) -> list:
             skipped += 1
             continue
 
-        # 2a. Closed-quarter mention in title
-        if _CLOSED_QUARTER_TITLE.search(title):
-            print(f'  ⏭  skipped (Q1-3 in title): {title[:60]}')
-            skipped += 1
-            continue
+        # Determine which quarters are closed (all quarters before the current one)
+        q_start = _current_quarter_start()
+        current_q_num = next(
+            (int(q[1]) for q, s in QUARTER_STARTS.items() if s == q_start), 4
+        )
+        closed_nums = list(range(1, current_q_num))
+
+        # 2a. Closed-quarter mention in title (e.g. "Q2 Essay" when we're in Q3+)
+        if closed_nums:
+            closed_title_re = re.compile(
+                r'\bQ(?:' + '|'.join(str(n) for n in closed_nums) + r')\b', re.IGNORECASE
+            )
+            if closed_title_re.search(title):
+                print(f'  ⏭  skipped (closed quarter in title): {title[:60]}')
+                skipped += 1
+                continue
 
         # 2c. Due-date check before fetching detail page (saves network round-trips)
         due_dt = _parse_due_date(item.get('due', ''))
-        if due_dt and due_dt < Q4_START:
-            print(f'  ⏭  skipped (due {item["due"]} < Q4): {title[:60]}')
+        if due_dt and due_dt < q_start:
+            print(f'  ⏭  skipped (due {item["due"]} < current quarter): {title[:60]}')
             skipped += 1
             continue
 
         # Fetch detail page for points + authoritative quarter
         points, quarter = await _fetch_assignment_points_and_quarter(page, item['url'])
 
-        # 2b. Detail-page quarter field says Q1/Q2/Q3
-        if quarter and _CLOSED_QUARTER_FIELD.search(quarter):
-            print(f'  ⏭  skipped (detail quarter={quarter}): {title[:60]}')
+        # 2b. Detail-page quarter field is a closed quarter
+        if quarter and closed_nums:
+            closed_field_re = re.compile(
+                r'quarter\s+(?:' + '|'.join(str(n) for n in closed_nums) + r')', re.IGNORECASE
+            )
+            if closed_field_re.search(quarter):
+                print(f'  ⏭  skipped (detail quarter={quarter}): {title[:60]}')
             skipped += 1
             continue
 
@@ -735,7 +784,7 @@ async def main(creds=None):
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
+        context = await browser.new_context(timezone_id="America/New_York")
         page = await context.new_page()
         
         # 1. Login
@@ -762,19 +811,11 @@ async def main(creds=None):
         except Exception:
             print('⚠️ No course cards appeared immediately.')
 
-        # Load existing assignments from DB to check for duplicates
+        # Reset assignments.json so each scrape reflects only what's currently on the dashboard
+        with open(JSON_PATH, 'w', encoding='utf-8') as f:
+            json.dump({"assignments": []}, f)
         existing_assignments = set()
-        if os.path.exists(JSON_PATH):
-            try:
-                with open(JSON_PATH, 'r', encoding='utf-8') as f:
-                    db = json.load(f)
-                    for entry in db.get('assignments', []):
-                        # Create a unique key: (course_name, title)
-                        key = (entry.get('course_name', ''), entry.get('assignment_title', ''))
-                        existing_assignments.add(key)
-                print(f'   📚 {len(existing_assignments)} assignments already in database.')
-            except:
-                pass
+        print('   🗑️  Cleared stale assignments — rebuilding fresh.')
 
         # 3. Initial Scrape - Collect all assignments first
         initial_cards = await page.query_selector_all('li.gHz6xd')
@@ -861,11 +902,15 @@ async def main(creds=None):
         check_count = 0
         try:
             while True:
+                # Re-inject watcher if page navigation cleared it
+                watcher_alive = await page.evaluate("typeof window.__DASHBOARD_ASSIGNMENTS__ !== 'undefined'")
+                if not watcher_alive:
+                    await inject_dashboard_watcher(page)
+
                 new_htmls = await page.evaluate("window.__DASHBOARD_ASSIGNMENTS__.splice(0)")
                 for html in new_htmls:
                     data = extract_assignment_from_dashboard_card(html)
                     if data:
-                        # For new assignments detected via watcher, also get details
                         assignment_url = data['assignment']['url']
                         if assignment_url and assignment_url.startswith('http'):
                             details = await scrape_assignment_details(page, assignment_url)
@@ -874,9 +919,10 @@ async def main(creds=None):
                                 await page.wait_for_selector('li.gHz6xd', timeout=10000)
                             except:
                                 pass
+                            await inject_dashboard_watcher(page)
                         else:
                             details = None
-                        
+
                         normalized = normalize(data, details)
                         write_assignment(normalized)
                         print(f'🔔 NEW: {data["assignment"]["raw_title"]} (Category: {details.get("category") if details else "N/A"})')

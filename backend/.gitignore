@@ -1,0 +1,8 @@
+.env
+*.db
+grades.json
+output/
+apps/gmail/credentials.json
+apps/gmail/token.json
+__pycache__/
+*.pyc
