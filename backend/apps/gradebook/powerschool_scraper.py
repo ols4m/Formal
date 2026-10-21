@@ -8,60 +8,56 @@ from playwright.async_api import async_playwright, Page, Browser
 import sys
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Allow importing from backend/core regardless of CWD
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.db import get_db, init_db
+from core.profile import (
+    get_current_term,
+    get_term_for_date,
+    load_profile,
+    source_periods_for_term,
+)
 
 
-async def detect_current_quarter(page: Page) -> str:
+async def detect_current_source_period(page: Page) -> str:
     """
-    Find the latest active quarter by reading fg= params from bold grade links.
-    Returns the highest Q-quarter that has real grades (e.g. 'Q4', 'Q3').
+    Find the active PowerSchool source period using the profile's current term.
     """
     try:
-        quarters = await page.evaluate("""
-            () => {
-                const seen = new Set();
-                for (const a of document.querySelectorAll('tr[id^="ccid_"] a.bold[href*="scores.html"]')) {
-                    try {
-                        const params = new URLSearchParams(a.getAttribute('href').split('?')[1] || '');
-                        const fg = params.get('fg');
-                        if (fg && /^[QqOo]\\d$/.test(fg)) seen.add(fg.toUpperCase());
-                    } catch(e) {}
-                }
-                return Array.from(seen).sort();
-            }
-        """)
-        if quarters:
-            current = quarters[-1]
-            print(f"📅 Current quarter: {current}  (active quarters with grades: {quarters})")
+        source_periods = await get_available_source_periods(page)
+        if source_periods:
+            profile = load_profile()
+            term_name = get_current_term(profile)["name"]
+            mapped_periods = source_periods_for_term(term_name, profile)
+            matching = [period for period in mapped_periods if period in source_periods]
+            current = matching[-1] if matching else source_periods[-1]
+            print(f"📅 Current source period: {current}  (available: {source_periods})")
             return current
     except Exception as e:
-        print(f"⚠️  Quarter detection failed: {e}")
-    print("📅 Falling back to Q3")
-    return "Q3"
+        print(f"⚠️  Source-period detection failed: {e}")
+    raise ValueError("No PowerSchool source period could be detected from the grade links.")
 
 
-async def get_available_quarters(page: Page) -> list:
-    """Return all Q-labeled quarters that have real grade links on the page."""
+async def get_available_source_periods(page: Page) -> list:
+    """Return source-period labels that have real grade links on the page."""
     try:
-        quarters = await page.evaluate("""
+        source_periods = await page.evaluate("""
             () => {
                 const seen = new Set();
                 for (const a of document.querySelectorAll('tr[id^="ccid_"] a.bold[href*="scores.html"]')) {
                     try {
                         const params = new URLSearchParams(a.getAttribute('href').split('?')[1] || '');
                         const fg = params.get('fg');
-                        if (fg && /^[Qq]\\d$/.test(fg)) seen.add(fg.toUpperCase());
+                        if (fg && /^[A-Za-z0-9]+$/.test(fg)) seen.add(fg.toUpperCase());
                     } catch(e) {}
                 }
                 return Array.from(seen).sort();
             }
         """)
-        return quarters or []
+        return source_periods or []
     except Exception:
         return []
 
@@ -229,11 +225,11 @@ def normalize_grade(raw: str):
 
 async def scrape_grades(page: Page) -> list:
     """
-    Scrape all quarter grades for every course by reading fg= from each bold grade link href.
+    Scrape all source-period grades for each course by reading fg= from grade links.
     Only counts a.bold links to scores.html — skips [ i ] info links and attendance links.
 
     Returns:
-        list of dicts: [{"course": "...", "type": "AP|Regular", "grades": {"Q1": {...}, "Q4": {...}}}, ...]
+        list of dicts keyed by the portal's source-period labels.
     """
     print("🔎 Waiting for grades table...")
     try:
@@ -286,16 +282,16 @@ async def scrape_grades(page: Page) -> list:
     return results
 
 
-async def scrape_current_quarter_assignments(page: Page, current_quarter: str) -> list:
+async def scrape_source_period_assignments(page: Page, source_period: str) -> list:
     """
-    Click into each course's current quarter detail page and scrape assignment data.
-    Finds the right link by href containing fg={current_quarter} — no index guessing.
+    Click into each course's source-period detail page and scrape assignment data.
+    Finds the right link by href containing the selected source period.
 
     Returns a list of dicts:
     [
       {
         "course": "AP English",
-        "quarter": "Q4",
+        "source_period": "Q4",
         "letter_grade": "A",
         "numeric_grade": 95,
         "assignments": [ {name, earned, possible, percent, category}, ... ]
@@ -303,7 +299,7 @@ async def scrape_current_quarter_assignments(page: Page, current_quarter: str) -
       ...
     ]
     """
-    print(f"🔎 Scraping assignment details for {current_quarter}...")
+    print(f"🔎 Scraping assignment details for {source_period}...")
     try:
         await page.wait_for_selector('tr[id^="ccid_"]', timeout=15000)
     except Exception as e:
@@ -324,19 +320,19 @@ async def scrape_current_quarter_assignments(page: Page, current_quarter: str) -
             print(f"⚠️  Couldn't read course name for detail row {i}: {e}")
             continue
 
-        # Find the quarter link directly by fg= in href — no positional index needed
-        quarter_link = row.locator(f'a.bold[href*="scores.html"][href*="fg={current_quarter}"]')
-        if await quarter_link.count() == 0:
-            print(f"⚠️  No {current_quarter} grade for {course}, skipping")
+        # Match the portal source period directly; do not depend on link ordering.
+        period_link = row.locator(f'a.bold[href*="scores.html"][href*="fg={source_period}"]')
+        if await period_link.count() == 0:
+            print(f"⚠️  No {source_period} grade for {course}, skipping")
             continue
 
         try:
-            raw = (await quarter_link.inner_text()).strip()
+            raw = (await period_link.inner_text()).strip()
             parts = [p.strip() for p in raw.splitlines() if p.strip()]
             letter = parts[0] if parts else None
             numeric = int(parts[-1]) if parts and re.search(r'\d', parts[-1]) else None
         except Exception as e:
-            print(f"⚠️  Couldn't parse {current_quarter} grade for {course}: {e}")
+            print(f"⚠️  Couldn't parse {source_period} grade for {course}: {e}")
             letter = None
             numeric = None
 
@@ -344,20 +340,20 @@ async def scrape_current_quarter_assignments(page: Page, current_quarter: str) -
         try:
             try:
                 async with page.expect_navigation(timeout=7000):
-                    await quarter_link.click()
+                    await period_link.click()
                 detail_page = page
             except Exception:
                 try:
                     async with page.context.expect_page(timeout=7000) as popup_info:
-                        await quarter_link.click()
+                        await period_link.click()
                     detail_page = await popup_info.value
                     await detail_page.wait_for_load_state('networkidle')
                 except Exception:
-                    await quarter_link.click()
+                    await period_link.click()
                     await page.wait_for_load_state('networkidle')
                     detail_page = page
         except Exception as e:
-            print(f"⚠️  Clicking into {current_quarter} for {course} failed: {e}")
+            print(f"⚠️  Clicking into {source_period} for {course} failed: {e}")
             continue
 
         assignments = []
@@ -479,7 +475,7 @@ async def scrape_current_quarter_assignments(page: Page, current_quarter: str) -
 
         details.append({
             "course": course,
-            "quarter": current_quarter,
+            "source_period": source_period,
             "letter_grade": letter,
             "numeric_grade": numeric,
             "assignments": assignments
@@ -503,7 +499,25 @@ def save_to_db(grades_data: dict):
     Inserts fresh rows on every scrape run (does not upsert — history is preserved).
     """
     init_db()
-    scraped_at = grades_data.get("scraped_at", datetime.utcnow().isoformat() + "Z")
+    scraped_at = grades_data.get(
+        "scraped_at",
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    )
+    profile = load_profile()
+    declared_term = grades_data.get("term")
+    if declared_term:
+        term = next(
+            (item for item in profile["terms"] if item["name"] == declared_term),
+            None,
+        )
+        if term is None:
+            raise ValueError(f"Unknown configured term in grades data: {declared_term!r}.")
+    else:
+        term = get_term_for_date(scraped_at, profile)
+        if term is None:
+            raise ValueError(
+                f"Scrape timestamp {scraped_at!r} does not fall within a configured term."
+            )
     conn = get_db()
 
     with conn:
@@ -511,40 +525,42 @@ def save_to_db(grades_data: dict):
             course_name = course.get("course", "")
             course_type = course.get("type", "Regular")
 
-            # Insert one row per quarter grade
-            for quarter, grade_info in course.get("grades", {}).items():
+            # Preserve the source period while associating the record with its configured term.
+            for source_period, grade_info in course.get("grades", {}).items():
                 if not grade_info:
                     continue
                 conn.execute(
                     """
-                    INSERT INTO grades (scraped_at, course, course_type, quarter, letter_grade, numeric_grade)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO grades
+                        (scraped_at, course, course_type, term, source_period, letter_grade, numeric_grade)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         scraped_at,
                         course_name,
                         course_type,
-                        quarter,
+                        term["name"],
+                        source_period,
                         grade_info.get("letter"),
                         grade_info.get("numeric"),
                     ),
                 )
 
-            # Insert assignment rows for each quarter
-            for quarter, assignments in course.get("assignments", {}).items():
+            for source_period, assignments in course.get("assignments", {}).items():
                 for a in assignments:
                     flags = json.dumps(a.get("flags", []))
                     conn.execute(
                         """
                         INSERT INTO assignments
-                            (scraped_at, course, quarter, name, category, due_date,
+                            (scraped_at, course, term, source_period, name, category, due_date,
                              earned, possible, percent, letter, flags)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             scraped_at,
                             course_name,
-                            quarter,
+                            term["name"],
+                            source_period,
                             a.get("name", ""),
                             a.get("category"),
                             a.get("due_date"),
@@ -560,11 +576,11 @@ def save_to_db(grades_data: dict):
     print(f"✅ Saved to formal.db (scraped_at={scraped_at})")
 
 
-async def main(creds=None, quarter: str = None):
+async def main(creds=None, source_period: str = None):
     """
     Main function to run the scraper.
     Pass creds=(email, username, password) to skip the prompt.
-    Pass quarter='Q3' to force a specific quarter instead of auto-detecting.
+    Pass source_period to force a PowerSchool portal period instead of auto-detecting.
     """
     email, username, password = creds if creds else get_credentials()
 
@@ -585,46 +601,50 @@ async def main(creds=None, quarter: str = None):
             print(" LOGIN COMPLETE!")
             print("="*60)
 
-            # Scrape all quarter grades (reads fg= from each link href)
+            # Scrape portal grade periods (reads fg= from each link href).
             grades = await scrape_grades(page)
             if grades:
-                scrape_all = quarter and quarter.upper() == 'ALL'
+                scrape_all = source_period and source_period.upper() == 'ALL'
 
                 if scrape_all:
-                    quarters_to_scrape = await get_available_quarters(page)
-                    print(f"📅 Scraping ALL quarters: {quarters_to_scrape}")
-                elif quarter:
-                    quarters_to_scrape = [quarter.upper()]
-                    print(f"📅 Using specified quarter: {quarter.upper()}")
+                    periods_to_scrape = await get_available_source_periods(page)
+                    print(f"📅 Scraping ALL source periods: {periods_to_scrape}")
+                elif source_period:
+                    periods_to_scrape = [source_period.upper()]
+                    print(f"📅 Using specified source period: {source_period.upper()}")
                 else:
-                    quarters_to_scrape = [await detect_current_quarter(page)]
+                    periods_to_scrape = [await detect_current_source_period(page)]
 
-                # Scrape assignment details for each selected quarter
+                # Scrape assignment details for each selected source period.
                 all_details = []
-                for q in quarters_to_scrape:
-                    print(f"\n── Scraping {q} assignments ──")
-                    details = await scrape_current_quarter_assignments(page, q)
+                for period in periods_to_scrape:
+                    print(f"\n── Scraping {period} assignments ──")
+                    details = await scrape_source_period_assignments(page, period)
                     all_details.extend(details)
 
-                # Merge assignments into grades (no break — collect every quarter per course)
+                # Merge assignments into grades, retaining their portal-period keys.
                 for g in grades:
                     for d in all_details:
                         if g.get('course') and d.get('course') and g['course'].lower() == d['course'].lower():
-                            q_label = d.get('quarter', 'Q?')
-                            g.setdefault('assignments', {})[q_label] = d.get('assignments', [])
+                            period_label = d.get('source_period', 'unknown')
+                            g.setdefault('assignments', {})[period_label] = d.get('assignments', [])
 
                 out_path = 'grades.json'
+                scraped_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                term = get_current_term(load_profile())
                 try:
                     data = {
-                        "scraped_at": datetime.utcnow().isoformat() + "Z",
+                        "scraped_at": scraped_at,
+                        "term": term["name"],
                         "grades": grades,
                     }
                     with open(out_path, 'w', encoding='utf-8') as f:
                         json.dump(data, f, ensure_ascii=False, indent=2)
-                    print(f"✅ Saved {len(grades)} grades → {out_path} (scraped_at={data['scraped_at']})")
-                    save_to_db(data)
-                except Exception as e:
+                except OSError as e:
                     print(f"❌ Failed to write grades to {out_path}: {e}")
+                    raise
+                print(f"✅ Saved {len(grades)} grades → {out_path} (scraped_at={data['scraped_at']})")
+                save_to_db(data)
             else:
                 print("⚠️ No grades extracted.")
         else:

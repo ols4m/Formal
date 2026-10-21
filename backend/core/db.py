@@ -6,11 +6,15 @@ DB location: backend/formal.db
 """
 
 import sqlite3
-import os
+import sys
 from pathlib import Path
 
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BACKEND_DIR))
+from core.profile import get_term_for_date
+
 # Resolve DB path relative to this file so it's stable regardless of CWD
-DB_PATH = Path(__file__).parent.parent / "formal.db"
+DB_PATH = BACKEND_DIR / "formal.db"
 
 
 def get_db() -> sqlite3.Connection:
@@ -27,23 +31,25 @@ def init_db():
     conn = get_db()
     with conn:
         conn.executescript("""
-            -- One row per course per quarter per scrape run
+            -- One row per course per term and source period per scrape run
             CREATE TABLE IF NOT EXISTS grades (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 scraped_at   TEXT NOT NULL,
                 course       TEXT NOT NULL,
                 course_type  TEXT DEFAULT 'Regular',
-                quarter      TEXT NOT NULL,
+                term         TEXT NOT NULL,
+                source_period TEXT,
                 letter_grade TEXT,
                 numeric_grade REAL
             );
 
-            -- One row per assignment per course per quarter
+            -- One row per assignment per course and source period
             CREATE TABLE IF NOT EXISTS assignments (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 scraped_at  TEXT NOT NULL,
                 course      TEXT NOT NULL,
-                quarter     TEXT NOT NULL DEFAULT 'Q2',
+                term        TEXT NOT NULL,
+                source_period TEXT,
                 name        TEXT NOT NULL,
                 category    TEXT,
                 due_date    TEXT,
@@ -74,7 +80,44 @@ def init_db():
                 notes         TEXT
             );
         """)
+        _migrate_period_columns(conn, "grades")
+        _migrate_period_columns(conn, "assignments")
     conn.close()
+
+
+def _migrate_period_columns(
+    conn: sqlite3.Connection,
+    table: str,
+    profile: dict | None = None,
+) -> None:
+    """Rename legacy quarter columns and retain their labels as source periods."""
+    columns = {
+        row["name"]
+        for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    migrated_legacy_column = "quarter" in columns and "term" not in columns
+    if migrated_legacy_column:
+        conn.execute(f"ALTER TABLE {table} RENAME COLUMN quarter TO term")
+        columns.remove("quarter")
+        columns.add("term")
+    if "source_period" not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN source_period TEXT")
+        columns.add("source_period")
+        if "term" in columns:
+            conn.execute(
+                f"UPDATE {table} SET source_period = term WHERE source_period IS NULL"
+            )
+    if migrated_legacy_column and "scraped_at" in columns and "source_period" in columns:
+        rows = conn.execute(
+            f"SELECT id, scraped_at FROM {table} WHERE source_period IS NOT NULL"
+        ).fetchall()
+        for row in rows:
+            term = get_term_for_date(row["scraped_at"], profile)
+            if term:
+                conn.execute(
+                    f"UPDATE {table} SET term = ? WHERE id = ?",
+                    (term["name"], row["id"]),
+                )
 
 
 if __name__ == "__main__":

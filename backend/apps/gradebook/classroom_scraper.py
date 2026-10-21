@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.db import get_db, init_db
+from core.profile import get_current_term, load_profile, source_periods_for_term
 
 # ==========================================
 # CONFIG
@@ -37,22 +38,28 @@ _SURVEY_PATTERNS = re.compile(
 )
 _SURVEY_SUFFIXES = re.compile(r'\?$')
 
-# Quarter start dates — used to filter assignments from closed quarters
-QUARTER_STARTS = {
-    'Q1': datetime(2025, 9,  2),
-    'Q2': datetime(2025, 11, 4),
-    'Q3': datetime(2026, 1, 20),
-    'Q4': datetime(2026, 4,  1),
-}
+def _closed_source_periods(profile: dict, current_term: dict) -> list[str]:
+    """Return mapped portal periods from configured terms before the active term."""
+    previous_terms = [
+        term for term in profile["terms"]
+        if term["end"] < current_term["start"]
+    ]
+    return [
+        period
+        for term in previous_terms
+        for period in source_periods_for_term(term["name"], profile)
+    ]
 
-def _current_quarter_start() -> datetime:
-    """Return the start date of whichever quarter is currently active."""
-    today = datetime.now()
-    start = QUARTER_STARTS['Q1']
-    for q in ('Q1', 'Q2', 'Q3', 'Q4'):
-        if today >= QUARTER_STARTS[q]:
-            start = QUARTER_STARTS[q]
-    return start
+
+def _mentions_source_period(text: str, source_periods: list[str]) -> bool:
+    for period in source_periods:
+        aliases = [re.escape(period)]
+        match = re.fullmatch(r"Q(\d+)", period, re.IGNORECASE)
+        if match:
+            aliases.append(r"quarter\s+" + re.escape(match.group(1)))
+        if re.search(r"\b(?:" + "|".join(aliases) + r")\b", text, re.IGNORECASE):
+            return True
+    return False
 
 
 # ==========================================
@@ -327,16 +334,16 @@ def extract_details_from_assignment_page(html: str):
     if title_elem:
         details['title'] = title_elem.get_text(strip=True)
     
-    # 2. METADATA ROW: Teacher • Date Posted • Quarter
+    # 2. METADATA ROW: Teacher • Date Posted • Source period
     # Structure: <div class="rec5Nb cSyPgb QRiHXd"> contains multiple <div class="YVvGBb">
     metadata_row = soup.find('div', class_='rec5Nb')
     if metadata_row:
         meta_items = metadata_row.find_all('div', class_='YVvGBb')
-        # Typically: [Teacher Name, Posted Date, Quarter]
+        # Typically: [Teacher Name, Posted Date, Source period]
         if len(meta_items) >= 2:
             details['posted_date'] = meta_items[1].get_text(strip=True)  # e.g., "Dec 18"
         if len(meta_items) >= 3:
-            details['quarter'] = meta_items[2].get_text(strip=True)  # e.g., "Quarter 2"
+            details['source_period'] = meta_items[2].get_text(strip=True)
     
     # 3. CATEGORY + POINTS ROW
     # Structure: <div class="W4hhKd"> contains:
@@ -463,7 +470,7 @@ def normalize(raw: dict, details: dict = None):
         'category': None,
         'posted_date': None,
         'due_date_full': None,
-        'quarter': None,
+        'source_period': None,
         'instructions': None
     }
     
@@ -472,7 +479,7 @@ def normalize(raw: dict, details: dict = None):
         result['category'] = details.get('category')
         result['posted_date'] = details.get('posted_date')
         result['due_date_full'] = details.get('due_date_full')
-        result['quarter'] = details.get('quarter')
+        result['source_period'] = details.get('source_period')
         result['instructions'] = details.get('instructions')
         # Override possible_points if we got it from detail page (more reliable)
         if details.get('points'):
@@ -609,8 +616,11 @@ async def inject_dashboard_watcher(page: Page):
 # PART 6: MISSING ASSIGNMENTS SCRAPER
 # ==========================================
 
-async def _fetch_assignment_points_and_quarter(page: Page, url: str) -> tuple[int | None, str | None]:
-    """Visit an assignment detail page and return (points_possible, quarter)."""
+async def _fetch_assignment_points_and_source_period(
+    page: Page,
+    url: str,
+) -> tuple[int | None, str | None]:
+    """Visit assignment details and return points possible and its source period."""
     try:
         await page.goto(url, timeout=15000)
         await page.wait_for_load_state('networkidle', timeout=10000)
@@ -618,23 +628,29 @@ async def _fetch_assignment_points_and_quarter(page: Page, url: str) -> tuple[in
         pass
     html = await page.content()
     details = extract_details_from_assignment_page(html)
-    return details.get('points'), details.get('quarter')
+    return details.get('points'), details.get('source_period')
 
 
 def _parse_due_date(due_str: str) -> datetime | None:
     """
     Parse a due string like 'Thursday, Mar 26' or 'Friday, Apr 3' into a datetime.
-    Assumes current school year (2025-2026); adjusts year if month implies prior year.
+    Uses the current year and rolls over dates that have already passed.
     """
     if not due_str:
         return None
+    today = datetime.now()
     # Strip weekday prefix if present
     parts = due_str.split(',', 1)
     date_part = parts[-1].strip()
     for fmt in ('%b %d', '%B %d'):
         try:
             parsed = datetime.strptime(date_part, fmt)
-            year = 2026 if parsed.month >= 1 else 2025
+            year = today.year
+            if year == today.year and (
+                parsed.month < today.month or
+                (parsed.month == today.month and parsed.day < today.day)
+            ):
+                year += 1
             return parsed.replace(year=year)
         except ValueError:
             continue
@@ -645,13 +661,14 @@ async def filter_impactful_missing(page: Page, missing: list) -> list:
     """
     Return only missing assignments that will still affect the current grade:
       1. Skip surveys / question-style items (title heuristic)
-      2. Skip closed-quarter items — checked in order of reliability:
-           a. Title contains Q1/Q2/Q3
-           b. Detail-page quarter field says Quarter 1/2/3
-           c. Due date falls before the current quarter's start (fallback for teachers who omit quarter)
+      2. Skip closed-term items using mapped source periods and due dates.
       3. Skip 0-point / ungraded items
-    Adds 'points_possible' and 'quarter' fields to each kept item.
+    Adds 'points_possible', 'term', and 'source_period' fields to each kept item.
     """
+    profile = load_profile()
+    current_term = get_current_term(profile)
+    term_start = datetime.fromisoformat(current_term["start"])
+    closed_periods = _closed_source_periods(profile, current_term)
     impactful = []
     skipped   = 0
 
@@ -664,40 +681,25 @@ async def filter_impactful_missing(page: Page, missing: list) -> list:
             skipped += 1
             continue
 
-        # Determine which quarters are closed (all quarters before the current one)
-        q_start = _current_quarter_start()
-        current_q_num = next(
-            (int(q[1]) for q, s in QUARTER_STARTS.items() if s == q_start), 4
-        )
-        closed_nums = list(range(1, current_q_num))
-
-        # 2a. Closed-quarter mention in title (e.g. "Q2 Essay" when we're in Q3+)
-        if closed_nums:
-            closed_title_re = re.compile(
-                r'\bQ(?:' + '|'.join(str(n) for n in closed_nums) + r')\b', re.IGNORECASE
-            )
-            if closed_title_re.search(title):
-                print(f'  ⏭  skipped (closed quarter in title): {title[:60]}')
-                skipped += 1
-                continue
-
-        # 2c. Due-date check before fetching detail page (saves network round-trips)
-        due_dt = _parse_due_date(item.get('due', ''))
-        if due_dt and due_dt < q_start:
-            print(f'  ⏭  skipped (due {item["due"]} < current quarter): {title[:60]}')
+        if closed_periods and _mentions_source_period(title, closed_periods):
+            print(f'  ⏭  skipped (closed source period in title): {title[:60]}')
             skipped += 1
             continue
 
-        # Fetch detail page for points + authoritative quarter
-        points, quarter = await _fetch_assignment_points_and_quarter(page, item['url'])
+        due_dt = _parse_due_date(item.get('due', ''))
+        if due_dt and due_dt < term_start:
+            print(f'  ⏭  skipped (due {item["due"]} < current term): {title[:60]}')
+            skipped += 1
+            continue
 
-        # 2b. Detail-page quarter field is a closed quarter
-        if quarter and closed_nums:
-            closed_field_re = re.compile(
-                r'quarter\s+(?:' + '|'.join(str(n) for n in closed_nums) + r')', re.IGNORECASE
-            )
-            if closed_field_re.search(quarter):
-                print(f'  ⏭  skipped (detail quarter={quarter}): {title[:60]}')
+        points, source_period = await _fetch_assignment_points_and_source_period(
+            page, item['url']
+        )
+
+        if source_period and closed_periods and _mentions_source_period(
+            source_period, closed_periods
+        ):
+            print(f'  ⏭  skipped (closed source period={source_period}): {title[:60]}')
             skipped += 1
             continue
 
@@ -707,9 +709,14 @@ async def filter_impactful_missing(page: Page, missing: list) -> list:
             skipped += 1
             continue
 
-        enriched = {**item, 'points_possible': points, 'quarter': quarter}
+        enriched = {
+            **item,
+            'points_possible': points,
+            'term': current_term["name"],
+            'source_period': source_period,
+        }
         impactful.append(enriched)
-        print(f'  ✅ kept ({points} pts, {quarter}): {title[:60]}')
+        print(f'  ✅ kept ({points} pts, {source_period}): {title[:60]}')
 
     print(f'\n📊 {len(impactful)} impactful missing / {skipped} filtered out')
     return impactful

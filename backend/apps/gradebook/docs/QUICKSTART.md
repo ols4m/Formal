@@ -10,6 +10,26 @@ Your `powerschool_scraper.py` now has:
 
 ## 🚀 How to Run
 
+1. **Configure your school profile:** copy `backend/profile.example.json` to
+   `backend/profile.json` and edit the term dates, grade scale, category rules,
+   and course settings. `profile.json` is ignored by Git. If it is absent, the
+   example profile is used with a warning.
+   - Terms use inclusive `start` and `end` dates and determine the active term
+     from today's date.
+   - `source_periods` optionally maps portal labels such as `Q1` and `Q2` to a
+     configured term such as `Fall 2026`.
+   - `courses` can override category weights and set each course's credits and
+     weighted-GPA eligibility.
+
+2. **Run the project entry point from `backend/`:**
+   ```bash
+   python run.py
+   ```
+   The prompt asks for a PowerSchool source period and a configured calculation
+   term separately.
+
+## Existing standalone login notes
+
 1. **Just run the script:**
    ```bash
    python powerschool_scraper.py

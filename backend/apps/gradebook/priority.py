@@ -11,43 +11,13 @@ import sys
 from datetime import datetime, date
 from typing import Dict, List, Optional, Tuple
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from core.profile import get_current_term, load_profile, normalize_category_name
+from apps.gradebook.calculator import term_assignments, term_grade_info
+
 # Fix Windows console encoding
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
-
-# ==========================================
-# CONFIGURATION
-# ==========================================
-
-TARGET_GRADE = 93.0
-LOOKAHEAD_DAYS = 14  # Window for urgency calculation
-
-CATEGORY_WEIGHTS = {
-    'Classwork': 0.35,
-    'Homework': 0.20,
-    'Quizzes': 0.15,
-    'Tests': 0.15,
-    'Interim Assessment': 0.15,
-    # Short names/Aliases
-    'Quiz': 0.15,
-    'Test': 0.15,
-    'IA': 0.15,
-    'HW': 0.20,
-    'CW': 0.35
-}
-
-VOLATILITY_BOOST = {
-    'Tests': 0.4,
-    'Test': 0.4,
-    'Interim Assessment': 0.4,
-    'IA': 0.4,
-    'Quizzes': 0.2,
-    'Quiz': 0.2,
-    'Homework': 0.0,
-    'HW': 0.0,
-    'Classwork': 0.0,
-    'CW': 0.0
-}
 
 # ==========================================
 # UTILS
@@ -73,18 +43,10 @@ def get_category_stats(course_assignments: List[dict], target_category: str) -> 
     total_possible = 0
     percents = []
     
-    # Normalize category names for matching
-    cat_map = {
-        'HW': 'Homework',
-        'CW': 'Classwork',
-        'Quiz': 'Quizzes',
-        'Test': 'Tests',
-        'IA': 'Interim Assessment'
-    }
-    target = cat_map.get(target_category, target_category)
+    target = normalize_category_name(target_category)
     
     for a in course_assignments:
-        cat = cat_map.get(a.get('category'), a.get('category'))
+        cat = normalize_category_name(a.get('category') or '')
         if cat == target:
             earned = a.get('earned')
             possible = a.get('possible')
@@ -108,15 +70,26 @@ def calculate_priority(
     points_possible: float,
     current_class_grade: float,
     category_points_so_far: float,
-    due_date: date
+    due_date: date,
+    course_name: str | None = None,
+    profile: dict | None = None,
 ) -> Dict:
     """
     Implements: P = clamp(Wc * I * R * U * (1 + V), 0, 1)
     """
+    profile = profile or load_profile()
+    grading = profile["grading"]
     today = date.today()
+    normalized_category = normalize_category_name(category)
     
     # 1. Category Weight (Wc)
-    wc = CATEGORY_WEIGHTS.get(category, 0.20)
+    category_settings = profile.get("categories", {}).get(normalized_category, {})
+    course_settings = profile.get("courses", {}).get(course_name, {}) if course_name else {}
+    course_weights = {
+        normalize_category_name(name): weight
+        for name, weight in course_settings.get("category_weights", {}).items()
+    }
+    wc = course_weights.get(normalized_category, category_settings.get("weight", 0.20))
     
     # 2. Assignment Impact (I)
     # I = points_possible / (category_points_so_far + points_possible)
@@ -124,15 +97,16 @@ def calculate_priority(
     
     # 3. Grade Risk (R)
     # R = max(0, (target - current) / 100)
-    r_val = max(0, (TARGET_GRADE - current_class_grade) / 100)
+    r_val = max(0, (grading["target_grade"] - current_class_grade) / 100)
     
     # 4. Urgency (U)
     # U = 1 - days_until_due / lookahead
-    days_left = (due_date - today).days if due_date else LOOKAHEAD_DAYS
-    u_val = max(0, min(1, 1 - (days_left / LOOKAHEAD_DAYS)))
+    lookahead_days = grading.get("lookahead_days", 14)
+    days_left = (due_date - today).days if due_date else lookahead_days
+    u_val = max(0, min(1, 1 - (days_left / lookahead_days)))
     
     # 5. Volatility (V)
-    v_val = VOLATILITY_BOOST.get(category, 0.0)
+    v_val = category_settings.get("volatility", 0.0)
     
     # Final Priority
     p_raw = wc * i_val * r_val * u_val * (1 + v_val)
@@ -241,16 +215,12 @@ def run_dismiss_prompt(policy: dict, makeup_items: list) -> dict:
 
 
 # ==========================================
-# QUARTER DETECTION
+# TERM DETECTION
 # ==========================================
 
-def detect_current_quarter(courses: list) -> str:
-    """Find the highest-numbered quarter that has assignment data."""
-    for q in ('Q4', 'Q3', 'Q2', 'Q1'):
-        for c in courses:
-            if c.get('assignments', {}).get(q):
-                return q
-    return 'Q4'
+def detect_current_term(profile: dict | None = None) -> str:
+    """Get the currently active configured term based on today's date."""
+    return get_current_term(profile)["name"]
 
 
 def _is_late(flags: list) -> bool:
@@ -272,7 +242,8 @@ def main():
 
     policy = load_policy()
     courses = grades_data.get('grades', [])
-    current_q = detect_current_quarter(courses)
+    profile = load_profile()
+    current_term = detect_current_term(profile)
     upcoming_list = (upcoming_data or {}).get('assignments', [])
 
     results = []
@@ -292,13 +263,17 @@ def main():
         if not matching_course:
             continue
 
-        q_assignments = matching_course.get('assignments', {}).get(current_q, [])
+        term_items = term_assignments(matching_course, current_term, profile)
+        q_assignments = term_items
         _, cat_points = get_category_stats(q_assignments, category)
 
-        grade_info    = matching_course.get('grades', {}).get(current_q, {})
+        grade_info    = term_grade_info(matching_course, current_term, profile)
         current_grade = grade_info.get('numeric') or 85.0
 
-        calc = calculate_priority(category, points, current_grade, cat_points, due_date)
+        calc = calculate_priority(
+            category, points, current_grade, cat_points, due_date,
+            matching_course.get("course"), profile
+        )
         results.append({
             'source':    'UPCOMING',
             'title':     title,
@@ -311,9 +286,9 @@ def main():
 
     # ── SOURCE 2: Recoverable assignments (grades.json zeros + low scores) ─
     for course in courses:
-        grade_info    = course.get('grades', {}).get(current_q, {})
+        grade_info    = term_grade_info(course, current_term, profile)
         current_grade = grade_info.get('numeric') or 85.0
-        q_assignments = course.get('assignments', {}).get(current_q, [])
+        q_assignments = term_assignments(course, current_term, profile)
 
         for a in q_assignments:
             earned   = a.get('earned')
@@ -334,7 +309,10 @@ def main():
             _, cat_points = get_category_stats(q_assignments, category)
 
             # Urgency is max for past-due recoverable items — they're hurting the grade now
-            calc = calculate_priority(category, recoverable_pts, current_grade, cat_points, due_date=date.today())
+            calc = calculate_priority(
+                category, recoverable_pts, current_grade, cat_points,
+                due_date=date.today(), course_name=course.get("course"), profile=profile
+            )
 
             source     = 'MISSING' if is_missing else 'MAKEUP'
             title      = a.get('name', 'Unknown')
@@ -364,7 +342,7 @@ def main():
         r['tier'] = get_tier(r['priority'], all_p)
 
     print("=" * 90)
-    print(f"🚀 ASSIGNMENT PRIORITY LIST  |  Quarter: {current_q}  |  Target: {TARGET_GRADE}%  |  {date.today()}")
+    print(f"🚀 ASSIGNMENT PRIORITY LIST  |  Term: {current_term}  |  Target: {profile['grading']['target_grade']}%  |  {date.today()}")
     print("=" * 90)
     print(f"{'TIER':<8} | {'SRC':<8} | {'DAYS':<5} | {'COURSE':<28} | {'ASSIGNMENT'}")
     print("-" * 90)

@@ -13,74 +13,31 @@ import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from core.profile import (
+    get_current_term,
+    load_profile,
+    normalize_category_name,
+    source_periods_for_term,
+)
+
 # Fix Windows console encoding for Unicode characters
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
 
-# ==========================================
-# CONFIGURATION - Grade Weights & GPA Scale
-# ==========================================
-
-# Category weights (must sum to 100%)
-CATEGORY_WEIGHTS = {
-    'Classwork': 0.35,
-    'Homework': 0.20,
-    'Quizzes': 0.15,
-    'Tests': 0.15,
-    'Interim Assessment': 0.15,
-    # Aliases
-    'Quiz': 0.15,
-    'Test': 0.15,
-    'IA': 0.15,
-    'HW': 0.20,
-}
-
-# Grade floors by category (minimum score when missing)
-CATEGORY_FLOORS = {
-    'Homework': 0,
-    'Classwork': 0,
-    'Quizzes': 55,
-    'Quiz': 55,
-    'Tests': 55,
-    'Test': 55,
-    'Interim Assessment': 55,
-    'IA': 55,
-}
-
-# GPA conversion tables
-GPA_UNWEIGHTED = {
-    'A+': 4.0, 'A': 4.0, 'A-': 3.7,
-    'B+': 3.3, 'B': 3.0, 'B-': 2.7,
-    'C+': 2.3, 'C': 2.0, 'C-': 1.7,
-    'D+': 1.3, 'D': 1.0, 'D-': 0.7,
-    'F': 0.0, 'F-': 0.0
-}
-
-GPA_WEIGHTED_BONUS = 1.0  # AP/Honors classes get +1.0 to GPA points
-GPA_ADJUSTMENT = 0.1  # School-specific adjustment to match official GPA calculation
-
-# Percentage to letter grade mapping
-def percent_to_letter(percent: float) -> str:
+def percent_to_letter(percent: float, profile: dict | None = None) -> str:
     """Convert percentage to letter grade."""
     if percent is None:
         return None
-    if percent >= 97: return 'A+'
-    if percent >= 93: return 'A'
-    if percent >= 90: return 'A-'
-    if percent >= 87: return 'B+'
-    if percent >= 83: return 'B'
-    if percent >= 80: return 'B-'
-    if percent >= 77: return 'C+'
-    if percent >= 73: return 'C'
-    if percent >= 70: return 'C-'
-    if percent >= 67: return 'D+'
-    if percent >= 63: return 'D'
-    if percent >= 60: return 'D-'
-    return 'F'
+    scale = (profile or load_profile())["grading"]["scale"]
+    for letter, threshold in sorted(scale.items(), key=lambda item: item[1], reverse=True):
+        if percent >= threshold:
+            return letter
+    return min(scale.items(), key=lambda item: item[1])[0]
 
 
-def school_round(value: float) -> int:
+def school_round(value: float, profile: dict | None = None) -> int:
     """
     Apply school's rounding rules to whole numbers.
     If the decimal part is >= 0.3, round up to the next whole number.
@@ -91,9 +48,10 @@ def school_round(value: float) -> int:
         88.5 → 89 (0.5 >= 0.3, rounds up)
         100.0 → 100 (no decimal, stays)
     """
+    rounding_threshold = (profile or load_profile())["grading"]["rounding"]["round_up_at"]
     decimal_part = value - int(value)
-    
-    if decimal_part >= 0.3:
+
+    if decimal_part >= rounding_threshold:
         return int(value) + 1
     else:
         return int(value)
@@ -111,27 +69,49 @@ def load_grades(path: str = 'grades.json') -> dict:
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def detect_current_quarter(grades_data: dict) -> str:
-    """
-    Infer the active quarter from the scraped data.
-    Priority: latest Q-quarter with assignment data, then latest with any grade.
-    """
-    quarter_order = ['Q1', 'Q2', 'Q3', 'Q4']
-    # Assignments are only scraped for the current quarter
-    found_with_assignments = set()
-    for course in grades_data.get('grades', []):
-        found_with_assignments.update(course.get('assignments', {}).keys())
-    for q in reversed(quarter_order):
-        if q in found_with_assignments:
-            return q
-    # Fallback: latest Q with grade data
-    found_with_grades = set()
-    for course in grades_data.get('grades', []):
-        found_with_grades.update(course.get('grades', {}).keys())
-    for q in reversed(quarter_order):
-        if q in found_with_grades:
-            return q
-    return 'Q4'
+def detect_current_term(profile: dict | None = None) -> str:
+    """Return the active configured term name based on today's date."""
+    return get_current_term(profile)["name"]
+
+
+def term_grade_info(course: dict, term: str, profile: dict | None = None) -> dict:
+    """Get the latest grade available from the source periods mapped to a term."""
+    profile = profile or load_profile()
+    grades = course.get("grades", {})
+    for period in reversed(source_periods_for_term(term, profile)):
+        if grades.get(period):
+            return grades[period]
+    return {}
+
+
+def term_assignments(course: dict, term: str, profile: dict | None = None) -> list:
+    """Combine assignment rows from all source periods mapped to a term."""
+    profile = profile or load_profile()
+    assignments = course.get("assignments", {})
+    return [
+        assignment
+        for period in source_periods_for_term(term, profile)
+        for assignment in assignments.get(period, [])
+    ]
+
+
+def _course_profile(course_name: str | None, profile: dict) -> dict:
+    return profile.get("courses", {}).get(course_name, {}) if course_name else {}
+
+
+def _category_setting(category: str, profile: dict, course_name: str | None = None) -> dict:
+    category = normalize_category_name(category)
+    course_settings = _course_profile(course_name, profile)
+    weights = {
+        normalize_category_name(name): weight
+        for name, weight in course_settings.get("category_weights", {}).items()
+    }
+    categories = profile.get("categories", {})
+    setting = categories.get(category, {})
+    return {
+        "weight": weights.get(category, setting.get("weight", 0.2)),
+        "floor": setting.get("floor", 0.0),
+    }
 
 
 def load_upcoming_assignments(path: str = 'output/assignments.json') -> list:
@@ -148,52 +128,58 @@ def load_upcoming_assignments(path: str = 'output/assignments.json') -> list:
 # GPA CALCULATIONS
 # ==========================================
 
-def calculate_gpa(grades_data: dict, quarter: str = 'Q2', weighted: bool = True) -> Tuple[float, List[dict]]:
+def calculate_gpa(
+    grades_data: dict,
+    term: str | None = None,
+    weighted: bool = True,
+    profile: dict | None = None,
+) -> Tuple[float, List[dict]]:
     """
     Calculate GPA from grades data.
     
     Args:
         grades_data: The full grades.json structure
-        quarter: Which quarter to use for grades (e.g., 'Q1', 'Q2', 'O2')
+        term: Configured term name; defaults to the date-based current term.
         weighted: If True, add +1.0 for AP/Honors classes
     
     Returns:
         Tuple of (gpa, breakdown_list)
     """
+    profile = profile or load_profile()
+    term = term or detect_current_term(profile)
+    grading = profile["grading"]
+    gpa_points = grading["gpa_points"]
+    weighted_bonus = grading.get("weighted_bonus", 0.0)
+    total_points = 0.0
+    total_credits = 0.0
     breakdown = []
-    total_points = 0
-    class_count = 0
     
     for course in grades_data.get('grades', []):
         course_name = course.get('course', 'Unknown')
         course_type = course.get('type', 'Regular')  # AP, Honors, Regular
-        is_weighted_class = course_type in ['AP', 'Honors', 'IB']
-        
-        # Get the grade for the specified quarter
-        quarter_grades = course.get('grades', {})
-        
-        # Try the requested quarter first, then fall back to yearly/latest
-        grade_info = None
-        for qkey in [quarter, 'Y1', 'Q4', 'Q3', 'Q2', 'Q1']:
-            if qkey in quarter_grades:
-                grade_info = quarter_grades[qkey]
-                break
-        
+        course_settings = _course_profile(course_name, profile)
+        is_weighted_class = course_settings.get(
+            "weighted", course_type in ["AP", "Honors", "IB"]
+        )
+        grade_info = term_grade_info(course, term, profile)
         if not grade_info:
             continue
         
         letter = grade_info.get('letter')
         numeric = grade_info.get('numeric')
         
-        if not letter or letter not in GPA_UNWEIGHTED:
+        if not letter or letter not in gpa_points:
             continue
         
-        # Calculate points
-        base_points = GPA_UNWEIGHTED.get(letter, 0)
+        base_points = gpa_points[letter]
         if weighted and is_weighted_class:
-            points = base_points + GPA_WEIGHTED_BONUS
+            points = base_points + weighted_bonus
         else:
             points = base_points
+        credits = float(course_settings.get("credits", 1.0))
+        if credits <= 0:
+            raise ValueError(f"Course {course_name!r} must have a positive credit value.")
+        weighted_points = points * credits
         
         breakdown.append({
             'course': course_name,
@@ -201,13 +187,16 @@ def calculate_gpa(grades_data: dict, quarter: str = 'Q2', weighted: bool = True)
             'letter': letter,
             'numeric': numeric,
             'points': points,
-            'is_ap': is_weighted_class
+            'credits': credits,
+            'weighted_points': weighted_points,
+            'is_weighted': is_weighted_class
         })
         
-        total_points += points
-        class_count += 1
+        total_points += weighted_points
+        total_credits += credits
     
-    gpa = round((total_points / class_count) + GPA_ADJUSTMENT, 2) if class_count > 0 else 0.0
+    adjustment = float(grading.get("gpa_adjustment", 0.0))
+    gpa = round((total_points / total_credits) + adjustment, 2) if total_credits else 0.0
     return gpa, breakdown
 
 
@@ -261,26 +250,45 @@ def calculate_category_averages(assignments: list) -> Dict[str, dict]:
     return categories
 
 
-def calculate_class_grade_weighted(assignments: list) -> float:
+def calculate_class_grade_weighted(
+    assignments: list,
+    course_name: str | None = None,
+    profile: dict | None = None,
+) -> float:
     """
     Calculate weighted class grade using category weights.
     
     Formula: Sum(category_avg * category_weight)
     """
+    profile = profile or load_profile()
     cat_avgs = calculate_category_averages(assignments)
     
     total_weighted = 0
     total_weight = 0
     
     for category, data in cat_avgs.items():
-        weight = CATEGORY_WEIGHTS.get(category, 0)
+        configured = _category_setting(category, profile, course_name)
+        course_weights = _course_profile(course_name, profile).get("category_weights", {})
+        normalized_category = normalize_category_name(category)
+        if (
+            normalized_category not in profile.get("categories", {})
+            and normalized_category not in {
+                normalize_category_name(name) for name in course_weights
+            }
+        ):
+            weight = 0.0
+        else:
+            weight = configured["weight"]
         if weight > 0 and data['count'] > 0:
             total_weighted += data['average'] * weight
             total_weight += weight
     
     if total_weight > 0:
         # Scale to 100 if not all categories have grades
-        return round(total_weighted / total_weight * (1 / total_weight) if total_weight < 1 else total_weighted, 2)
+        return round(
+            total_weighted / total_weight if total_weight < 1 else total_weighted,
+            2,
+        )
     return 0
 
 
@@ -294,7 +302,9 @@ def calculate_assignment_impact(
     score: float,
     category_avg: float,
     category_points_so_far: float,
-    current_class_grade: float = None
+    current_class_grade: float = None,
+    course_name: str | None = None,
+    profile: dict | None = None,
 ) -> dict:
     """
     Calculate the impact of a single assignment on grades.
@@ -310,8 +320,10 @@ def calculate_assignment_impact(
     Returns:
         Dict with impact metrics
     """
-    weight = CATEGORY_WEIGHTS.get(category, 0.20)
-    floor = CATEGORY_FLOORS.get(category, 0)
+    profile = profile or load_profile()
+    category_setting = _category_setting(category, profile, course_name)
+    weight = category_setting["weight"]
+    floor = category_setting["floor"]
     
     # Normalize score to percentage
     score_percent = (score / points_possible * 100) if points_possible > 0 else 0
@@ -363,7 +375,10 @@ def calculate_gpa_impact(
     current_class_percent: float,
     new_class_percent: float,
     is_ap: bool = False,
-    weighted: bool = True
+    weighted: bool = True,
+    profile: dict | None = None,
+    course_credits: float = 1.0,
+    total_credits: float | None = None,
 ) -> dict:
     """
     Calculate how a class grade change affects overall GPA.
@@ -376,24 +391,25 @@ def calculate_gpa_impact(
         is_ap: Whether this is an AP/Honors class
         weighted: Whether to use weighted GPA
     """
-    # Convert percentages to letter grades
-    current_letter = percent_to_letter(current_class_percent)
-    new_letter = percent_to_letter(new_class_percent)
+    profile = profile or load_profile()
+    current_letter = percent_to_letter(current_class_percent, profile)
+    new_letter = percent_to_letter(new_class_percent, profile)
     
-    # Get GPA points
-    current_points = GPA_UNWEIGHTED.get(current_letter, 0)
-    new_points = GPA_UNWEIGHTED.get(new_letter, 0)
+    gpa_points = profile["grading"]["gpa_points"]
+    current_points = gpa_points.get(current_letter, 0)
+    new_points = gpa_points.get(new_letter, 0)
     
     if weighted and is_ap:
-        current_points += GPA_WEIGHTED_BONUS
-        new_points += GPA_WEIGHTED_BONUS
+        bonus = profile["grading"].get("weighted_bonus", 0.0)
+        current_points += bonus
+        new_points += bonus
     
-    # Calculate GPA change
-    # GPA = sum(points) / num_classes
-    # If one class changes: new_GPA = (current_GPA * num_classes - old_points + new_points) / num_classes
-    old_total = current_gpa * num_classes
-    new_total = old_total - current_points + new_points
-    new_gpa = new_total / num_classes if num_classes > 0 else 0
+    denominator = total_credits if total_credits is not None else float(num_classes)
+    if course_credits <= 0 or denominator < course_credits:
+        raise ValueError("Course credits must be positive and no greater than total credits.")
+    old_total = current_gpa * denominator
+    new_total = old_total - current_points * course_credits + new_points * course_credits
+    new_gpa = new_total / denominator if denominator > 0 else 0
     
     return {
         'current_letter': current_letter,
@@ -409,7 +425,11 @@ def calculate_gpa_impact(
 # CROSS-CLASS AVERAGES
 # ==========================================
 
-def calculate_all_class_averages(grades_data: dict, quarter: str = 'Q2') -> dict:
+def calculate_all_class_averages(
+    grades_data: dict,
+    term: str | None = None,
+    profile: dict | None = None,
+) -> dict:
     """
     Calculate averages across ALL classes by category.
     
@@ -420,10 +440,12 @@ def calculate_all_class_averages(grades_data: dict, quarter: str = 'Q2') -> dict
         ...
     }
     """
+    profile = profile or load_profile()
+    term = term or detect_current_term(profile)
     all_categories = {}
     
     for course in grades_data.get('grades', []):
-        assignments = course.get('assignments', {}).get(quarter, [])
+        assignments = term_assignments(course, term, profile)
         
         for assignment in assignments:
             category = assignment.get('category', 'Unknown')
@@ -457,7 +479,8 @@ def calculate_all_class_averages(grades_data: dict, quarter: str = 'Q2') -> dict
 def analyze_upcoming_assignment(
     upcoming: dict,
     grades_data: dict,
-    quarter: str = 'Q2'
+    term: str | None = None,
+    profile: dict | None = None,
 ) -> dict:
     """
     Analyze an upcoming assignment from Classroom scraper.
@@ -465,10 +488,12 @@ def analyze_upcoming_assignment(
     Args:
         upcoming: Assignment from output/assignments.json
         grades_data: Full grades.json data
-        quarter: Current quarter
+        term: Current configured term
     
     Returns detailed impact analysis.
     """
+    profile = profile or load_profile()
+    term = term or detect_current_term(profile)
     course_name = upcoming.get('course_name', '')
     category = upcoming.get('category', 'Homework')
     possible_points = upcoming.get('possible_points') or 100
@@ -505,15 +530,14 @@ def analyze_upcoming_assignment(
         }
     
     # Get assignments for this course
-    assignments = matching_course.get('assignments', {}).get(quarter, [])
+    assignments = term_assignments(matching_course, term, profile)
     
     # Calculate category stats
     cat_stats = calculate_category_averages(assignments)
     cat_data = cat_stats.get(normalized_category, {'average': 85, 'total_possible': 0, 'count': 0})
     
     # Get current class grade
-    grade_info = (matching_course.get('grades', {}).get(quarter)
-                  or matching_course.get('grades', {}).get('Y1', {}))
+    grade_info = term_grade_info(matching_course, term, profile)
     current_class_grade = grade_info.get('numeric', 85)
     
     # Calculate impacts for different scenarios
@@ -525,12 +549,16 @@ def analyze_upcoming_assignment(
             score=score * possible_points / 100,  # Convert to points
             category_avg=cat_data.get('average', 85),
             category_points_so_far=cat_data.get('total_possible', 0),
-            current_class_grade=current_class_grade
+            current_class_grade=current_class_grade,
+            course_name=matching_course.get("course"),
+            profile=profile,
         )
         scenarios[score_name] = impact
     
     # Determine if AP class
-    is_ap = matching_course.get('type', 'Regular') in ['AP', 'Honors', 'IB']
+    is_ap = _course_profile(matching_course.get("course"), profile).get(
+        "weighted", matching_course.get('type', 'Regular') in ['AP', 'Honors', 'IB']
+    )
     
     return {
         'assignment_title': upcoming.get('assignment_title'),
@@ -567,11 +595,12 @@ def generate_missing_report(
 
     missing = data.get('missing', [])
     grades_data = load_grades(grades_path)
-    quarter = detect_current_quarter(grades_data) if grades_data else 'Q4'
+    profile = load_profile()
+    term = detect_current_term(profile)
 
     print("=" * 70)
     print("🚨 MISSING ASSIGNMENTS REPORT")
-    print(f"   Scraped: {data.get('scraped_at', 'unknown')}  |  Current quarter: {quarter}")
+    print(f"   Scraped: {data.get('scraped_at', 'unknown')}  |  Current term: {term}")
     print("=" * 70)
 
     if not missing:
@@ -646,12 +675,11 @@ def generate_missing_report(
             print(f"     Due: {due}")
 
         if matched:
-            grade_info = (matched.get('grades', {}).get(quarter)
-                          or matched.get('grades', {}).get('Y1', {}))
+            grade_info = term_grade_info(matched, term, profile)
             current_num = grade_info.get('numeric')
             current_let = grade_info.get('letter', 'N/A')
 
-            assignments = matched.get('assignments', {}).get(quarter, [])
+            assignments = term_assignments(matched, term, profile)
             cat_avgs    = calculate_category_averages(assignments)
             hw_data     = cat_avgs.get('Homework', {'average': 85, 'total_possible': 0})
 
@@ -662,12 +690,14 @@ def generate_missing_report(
                 score=0,
                 category_avg=hw_data.get('average', 85),
                 category_points_so_far=hw_data.get('total_possible', 0),
-                current_class_grade=current_num
+                current_class_grade=current_num,
+                course_name=matched.get("course"),
+                profile=profile,
             )
             total_hit   = round(impact_per['delta_class'] * count, 2)
             projected   = round((current_num or 0) + total_hit, 1) if current_num else None
 
-            print(f"\n   Current {quarter} grade: {current_let} ({current_num}%)")
+            print(f"\n   Current {term} grade: {current_let} ({current_num}%)")
             print(f"   Estimated hit if all stay 0: {total_hit:+.2f}%", end='')
             if projected is not None:
                 proj_let = percent_to_letter(school_round(projected))
@@ -682,57 +712,49 @@ def generate_missing_report(
     print("=" * 70)
 
 
-# ==========================================
-# TREND REPORT (all quarters)
-# ==========================================
-
-QUARTER_SEQUENCE = ['Q1', 'Q2', 'Q3', 'Q4']
-FINAL_MAP = {'Q2': 'F2', 'Q3': 'F3'}  # semester finals that follow each Q
-
-
 def generate_trend_report(grades_path: str = 'grades.json'):
-    """Show grade progression across all available quarters."""
+    """Show grade progression across configured terms with available data."""
     grades_data = load_grades(grades_path)
     if not grades_data:
         print("❌ No grades data found")
         return
+    profile = load_profile()
 
-    # Which Q-quarters actually have data
-    available = []
-    for q in QUARTER_SEQUENCE:
-        for course in grades_data.get('grades', []):
-            if q in course.get('grades', {}):
-                available.append(q)
-                break
+    available = [
+        term["name"]
+        for term in profile["terms"]
+        if any(term_grade_info(course, term["name"], profile)
+               for course in grades_data.get("grades", []))
+    ]
 
     print("=" * 70)
     print("📈 GRADE PROGRESSION REPORT")
-    print(f"   Quarters with data: {' → '.join(available)}")
+    print(f"   Terms with data: {' → '.join(available)}")
     print("=" * 70)
 
     # ── GPA trend ──────────────────────────────────────────────────────
     print("\n─" * 35)
-    print("🎓 WEIGHTED GPA BY QUARTER")
+    print("🎓 WEIGHTED GPA BY TERM")
     print("─" * 70)
     gpas = {}
-    for q in available:
-        gpa, _ = calculate_gpa(grades_data, quarter=q, weighted=True)
-        gpas[q] = gpa
+    for term in available:
+        gpa, _ = calculate_gpa(grades_data, term=term, weighted=True, profile=profile)
+        gpas[term] = gpa
         arrow = ''
         if len(gpas) > 1:
             prev = list(gpas.values())[-2]
             diff = gpa - prev
             arrow = f"  ({'↑' if diff > 0 else '↓' if diff < 0 else '→'}{abs(diff):+.2f})"
-        print(f"   {q}: {gpa}{arrow}")
+        print(f"   {term}: {gpa}{arrow}")
 
     # ── Per-class progression ───────────────────────────────────────────
     print("\n─" * 35)
     print("📖 PER-CLASS GRADE PROGRESSION")
     print("─" * 70)
 
-    header = "   {:<38}".format("Course") + "  ".join(f"{q:>5}" for q in available)
+    header = "   {:<38}".format("Course") + "  ".join(f"{term:>14}" for term in available)
     print(header)
-    print("   " + "─" * (38 + 7 * len(available)))
+    print("   " + "─" * (38 + 16 * len(available)))
 
     for course in grades_data.get('grades', []):
         name = course.get('course', 'Unknown')
@@ -741,48 +763,48 @@ def generate_trend_report(grades_path: str = 'grades.json'):
         label = (name + tag)[:38].ljust(38)
         row = f"   {label}"
         prev_num = None
-        for q in available:
-            info = course.get('grades', {}).get(q)
+        for term in available:
+            info = term_grade_info(course, term, profile)
             if info:
                 num = info.get('numeric', 0)
                 arrow = ''
                 if prev_num is not None:
                     diff = num - prev_num
                     arrow = '↑' if diff > 0 else ('↓' if diff < 0 else '→')
-                row += f"  {num:>3}{arrow:<1}"
+                row += f"  {num:>10.1f}{arrow:<1}"
                 prev_num = num
             else:
-                row += "   --  "
+                row += "      --      "
         print(row)
 
-    # ── Category trend across all quarters ─────────────────────────────
+    # ── Category trend across all configured terms ─────────────────────
     print("\n─" * 35)
-    print("📚 CATEGORY AVERAGES BY QUARTER (assignments scraped)")
+    print("📚 CATEGORY AVERAGES BY TERM (assignments scraped)")
     print("─" * 70)
 
-    cat_by_quarter = {}
-    for q in available:
-        avgs = calculate_all_class_averages(grades_data, q)
+    cat_by_term = {}
+    for term in available:
+        avgs = calculate_all_class_averages(grades_data, term, profile)
         if avgs:
-            cat_by_quarter[q] = avgs
+            cat_by_term[term] = avgs
 
-    all_cats = sorted({c for avgs in cat_by_quarter.values() for c in avgs})
+    all_cats = sorted({c for avgs in cat_by_term.values() for c in avgs})
     if all_cats:
         header2 = "   {:<22}".format("Category") + "  ".join(
-            f"{q:>8}" for q in cat_by_quarter
+            f"{term:>14}" for term in cat_by_term
         )
         print(header2)
-        print("   " + "─" * (22 + 10 * len(cat_by_quarter)))
+        print("   " + "─" * (22 + 16 * len(cat_by_term)))
         for cat in all_cats:
             row = f"   {cat:<22}"
-            for q, avgs in cat_by_quarter.items():
+            for term, avgs in cat_by_term.items():
                 if cat in avgs:
-                    row += f"  {avgs[cat]['average']:>6.1f}%"
+                    row += f"  {avgs[cat]['average']:>12.1f}%"
                 else:
-                    row += "       --"
+                    row += "        --      "
             print(row)
     else:
-        print("   (No assignment data scraped — run with ALL quarters to populate)")
+        print("   (No assignment data scraped for configured terms.)")
 
     print("\n" + "=" * 70)
     print("✅ Trend Report Complete")
@@ -793,7 +815,11 @@ def generate_trend_report(grades_path: str = 'grades.json'):
 # MAIN REPORT GENERATOR
 # ==========================================
 
-def generate_full_report(grades_path: str = 'grades.json', upcoming_path: str = 'output/assignments.json', quarter: str = None):
+def generate_full_report(
+    grades_path: str = 'grades.json',
+    upcoming_path: str = 'output/assignments.json',
+    term: str | None = None,
+):
     """
     Generate a comprehensive grade report.
     """
@@ -806,17 +832,17 @@ def generate_full_report(grades_path: str = 'grades.json', upcoming_path: str = 
     # Load data
     grades_data = load_grades(grades_path)
     upcoming = load_upcoming_assignments(upcoming_path)
+    profile = load_profile()
 
     if not grades_data:
         print("❌ No grades data found")
         return
 
-    if quarter:
-        quarter = quarter.upper()
-        print(f"Quarter: {quarter} (specified)")
-    else:
-        quarter = detect_current_quarter(grades_data)
-        print(f"Quarter: {quarter} (auto-detected)")
+    term_was_specified = term is not None
+    term = term or detect_current_term(profile)
+    if term not in {configured["name"] for configured in profile["terms"]}:
+        raise ValueError(f"Unknown configured term: {term!r}.")
+    print(f"Term: {term}" + (" (specified)" if term_was_specified else " (date-based current term)"))
 
     # =========================================
     # 1. GPA CALCULATIONS
@@ -826,49 +852,55 @@ def generate_full_report(grades_path: str = 'grades.json', upcoming_path: str = 
     print("─" * 70)
 
     # Weighted GPA
-    weighted_gpa, weighted_breakdown = calculate_gpa(grades_data, quarter=quarter, weighted=True)
+    weighted_gpa, weighted_breakdown = calculate_gpa(
+        grades_data, term=term, weighted=True, profile=profile
+    )
     print(f"\n🎓 Weighted GPA: {weighted_gpa}")
     print("   Breakdown:")
     for course in weighted_breakdown:
-        ap_marker = " (AP +1.0)" if course['is_ap'] else ""
-        print(f"      • {course['course']}: {course['letter']} ({course['numeric']}%) → {course['points']} pts{ap_marker}")
+        weighted_marker = (
+            f" (weighted; {course['credits']} credits)"
+            if course['is_weighted'] else f" ({course['credits']} credits)"
+        )
+        print(f"      • {course['course']}: {course['letter']} ({course['numeric']}%) → {course['points']} pts{weighted_marker}")
 
     # Unweighted GPA
-    unweighted_gpa, _ = calculate_gpa(grades_data, quarter=quarter, weighted=False)
+    unweighted_gpa, _ = calculate_gpa(
+        grades_data, term=term, weighted=False, profile=profile
+    )
     print(f"\n🎓 Unweighted GPA: {unweighted_gpa}")
 
     # =========================================
     # 2. CATEGORY AVERAGES ACROSS ALL CLASSES
     # =========================================
     print("\n" + "─" * 70)
-    print(f"📚 CATEGORY AVERAGES ({quarter} — All Classes)")
+    print(f"📚 CATEGORY AVERAGES ({term} — All Classes)")
     print("─" * 70)
 
-    all_avgs = calculate_all_class_averages(grades_data, quarter)
+    all_avgs = calculate_all_class_averages(grades_data, term, profile)
     for cat, data in sorted(all_avgs.items()):
         raw_avg = data['average']
-        rounded_avg = school_round(raw_avg)
-        letter = percent_to_letter(rounded_avg)
+        rounded_avg = school_round(raw_avg, profile)
+        letter = percent_to_letter(rounded_avg, profile)
         print(f"   {cat}: {raw_avg}% → {rounded_avg}% ({letter}) - {data['count']} assignments")
 
     # =========================================
     # 3. PER-CLASS BREAKDOWN
     # =========================================
     print("\n" + "─" * 70)
-    print(f"📖 PER-CLASS BREAKDOWN — {quarter} (with School Rounding)")
+    print(f"📖 PER-CLASS BREAKDOWN — {term} (with School Rounding)")
     print("─" * 70)
 
     for course in grades_data.get('grades', []):
         course_name = course.get('course', 'Unknown')
         course_type = course.get('type', 'Regular')
-        assignments = course.get('assignments', {}).get(quarter, [])
+        assignments = term_assignments(course, term, profile)
 
-        grade_info = (course.get('grades', {}).get(quarter)
-                      or course.get('grades', {}).get('Y1', {}))
+        grade_info = term_grade_info(course, term, profile)
         current_grade = grade_info.get('numeric', 0)
         current_letter = grade_info.get('letter', 'N/A')
-        rounded_grade = school_round(current_grade)
-        rounded_letter = percent_to_letter(rounded_grade)
+        rounded_grade = school_round(current_grade, profile)
+        rounded_letter = percent_to_letter(rounded_grade, profile)
 
         print(f"\n   📘 {course_name} ({course_type})")
         print(f"      Current Grade: {current_letter} ({current_grade}%) → Rounded: {rounded_grade}% ({rounded_letter})")
@@ -876,12 +908,12 @@ def generate_full_report(grades_path: str = 'grades.json', upcoming_path: str = 
         cat_avgs = calculate_category_averages(assignments)
         if cat_avgs:
             for cat, data in sorted(cat_avgs.items()):
-                weight = CATEGORY_WEIGHTS.get(cat, 0) * 100
+                weight = _category_setting(cat, profile, course_name)["weight"] * 100
                 raw = data['average']
-                rounded = school_round(raw)
+                rounded = school_round(raw, profile)
                 print(f"         {cat} ({weight:.0f}%): {raw}% → {rounded}% ({data['count']} assignments)")
         else:
-            print(f"         (no {quarter} assignment data)")
+            print(f"         (no {term} assignment data)")
     
     # =========================================
     # 4. UPCOMING ASSIGNMENTS IMPACT
@@ -892,7 +924,7 @@ def generate_full_report(grades_path: str = 'grades.json', upcoming_path: str = 
         print("─" * 70)
         
         for assignment in upcoming:
-            analysis = analyze_upcoming_assignment(assignment, grades_data)
+            analysis = analyze_upcoming_assignment(assignment, grades_data, term, profile)
             
             if 'error' in analysis:
                 print(f"\n   ⚠️ {analysis.get('course_name')}: {analysis.get('error')}")
@@ -941,10 +973,11 @@ def interactive_calculator():
     
     # List courses
     courses = grades_data.get('grades', [])
+    profile = load_profile()
+    current_term = detect_current_term(profile)
     print("Your Courses:")
     for i, course in enumerate(courses):
-        cq = detect_current_quarter(grades_data)
-        grade = (course.get('grades', {}).get(cq) or course.get('grades', {}).get('Y1', {})).get('numeric', '?')
+        grade = term_grade_info(course, current_term, profile).get('numeric', '?')
         print(f"  {i+1}. {course['course']} - Currently: {grade}%")
     
     try:
@@ -968,13 +1001,11 @@ def interactive_calculator():
         return
     
     # Calculate
-    cq = detect_current_quarter(grades_data)
-    assignments = selected_course.get('assignments', {}).get(cq, [])
+    assignments = term_assignments(selected_course, current_term, profile)
     cat_stats = calculate_category_averages(assignments)
     cat_data = cat_stats.get(category, {'average': 85, 'total_possible': 0})
 
-    grade_info = (selected_course.get('grades', {}).get(cq)
-                  or selected_course.get('grades', {}).get('Y1', {}))
+    grade_info = term_grade_info(selected_course, current_term, profile)
     current_grade = grade_info.get('numeric', 85)
     
     impact = calculate_assignment_impact(
@@ -983,7 +1014,9 @@ def interactive_calculator():
         score=score,
         category_avg=cat_data.get('average', 85),
         category_points_so_far=cat_data.get('total_possible', 0),
-        current_class_grade=current_grade
+        current_class_grade=current_grade,
+        course_name=selected_course["course"],
+        profile=profile,
     )
     
     print("\n" + "─" * 50)

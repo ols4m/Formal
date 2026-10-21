@@ -34,6 +34,13 @@ Prompts:
 python apps/gradebook/powerschool_scraper.py
 ```
 
+Before the first run, copy `profile.example.json` to `profile.json` and
+customize the terms, grade scale, category weights, and courses. The ignored
+`profile.json` is optional; without it, Formal uses the example profile and
+prints a warning. Terms are date-based, and `source_periods` map portal labels
+such as `Q1` to configured terms such as `Fall 2026`. Course profiles support
+individual credits, weighted GPA eligibility, and category-weight overrides.
+
 ---
 
 ## Grade calculator only
@@ -106,7 +113,8 @@ SELECT title, due_date, notes FROM tasks WHERE status = 'pending' ORDER BY due_d
 SELECT course, name, earned, possible FROM assignments ORDER BY scraped_at DESC LIMIT 20;
 
 -- Grades
-SELECT course, quarter, letter_grade, numeric_grade FROM grades ORDER BY scraped_at DESC;
+SELECT course, term, source_period, letter_grade, numeric_grade
+FROM grades ORDER BY scraped_at DESC;
 ```
 
 ---

@@ -17,6 +17,8 @@ from apps.gradebook.classroom_scraper import main as run_classroom
 from apps.gradebook.calculator import generate_full_report, generate_trend_report, generate_missing_report
 from apps.gmail.gmail_scraper import main as run_gmail
 
+from core.profile import get_current_term, load_profile
+
 # Load .env from the backend directory (gitignored, never committed)
 load_dotenv(Path(__file__).parent / '.env')
 
@@ -45,62 +47,80 @@ def get_credentials():
     return email, username, password
 
 
-VALID_QUARTERS = {'Q1', 'Q2', 'Q3', 'Q4'}
-
-
-def get_quarter_selection():
+def get_term_selection():
+    profile = load_profile()
+    terms = [item["name"] for item in profile["terms"]]
+    current_term = get_current_term(profile)["name"]
+    source_periods = list(dict.fromkeys(
+        period
+        for term in profile["terms"]
+        for period in term.get("source_periods", [])
+    ))
     print()
     print("─" * 60)
-    print("QUARTER SELECTION")
+    print("TERM SELECTION")
     print("─" * 60)
-    print("Options: Q1  Q2  Q3  Q4  ALL")
-    print("Press Enter to auto-detect current quarter.\n")
+    print(f"Configured terms: {', '.join(terms)}")
+    print(f"PowerSchool source periods: {', '.join(source_periods) or '(auto-detect)'}")
+    print("Press Enter to use the active term and auto-detect source period.\n")
 
-    raw_scrape = input("Scrape which quarter? [auto] ").strip().upper()
+    raw_scrape = input("Scrape which source period? [auto] ").strip().upper()
     if raw_scrape == 'ALL':
-        scrape_quarter = 'ALL'
-    elif raw_scrape in VALID_QUARTERS:
-        scrape_quarter = raw_scrape
+        scrape_source_period = 'ALL'
+    elif raw_scrape in source_periods:
+        scrape_source_period = raw_scrape
+    elif raw_scrape:
+        raise ValueError(
+            f"Unknown source period {raw_scrape!r}; choose one of {source_periods} or ALL."
+        )
     else:
-        scrape_quarter = None
+        scrape_source_period = None
 
-    if scrape_quarter == 'ALL':
-        # When scraping all, calc defaults to trend report
-        raw_calc = input("Calculate: trend report [Enter] or specific quarter (Q1-Q4)? ").strip().upper()
-        calc_quarter = raw_calc if raw_calc in VALID_QUARTERS else 'TREND'
-    else:
-        raw_calc = input("Calculate which quarter? [same as scrape] ").strip().upper()
-        if raw_calc in VALID_QUARTERS:
-            calc_quarter = raw_calc
-        elif scrape_quarter:
-            calc_quarter = scrape_quarter
+    if scrape_source_period == 'ALL':
+        raw_calc = input(
+            f"Calculate: trend report [Enter] or configured term ({' / '.join(terms)})? "
+        ).strip()
+        if raw_calc:
+            calc_term = next(
+                (term for term in terms if term.casefold() == raw_calc.casefold()),
+                None,
+            )
+            if calc_term is None:
+                raise ValueError(f"Unknown term {raw_calc!r}; choose one of {terms}.")
         else:
-            calc_quarter = None
+            calc_term = 'TREND'
+    else:
+        raw_calc = input(f"Calculate which term? [{current_term}] ").strip()
+        calc_term = next(
+            (term for term in terms if term.casefold() == raw_calc.casefold()),
+            None,
+        ) if raw_calc else current_term
+        if calc_term is None:
+            raise ValueError(f"Unknown term {raw_calc!r}; choose one of {terms}.")
 
     print()
-    sq_label = scrape_quarter or "auto-detect"
-    cq_label = calc_quarter or "auto-detect"
-    print(f"  Scraping: {sq_label}  |  Calculating: {cq_label}")
-    return scrape_quarter, calc_quarter
+    source_label = scrape_source_period or "auto-detect"
+    print(f"  Scraping source period: {source_label}  |  Calculating term: {calc_term}")
+    return scrape_source_period, calc_term
 
 
 async def main():
     creds = get_credentials()
-    scrape_quarter, calc_quarter = get_quarter_selection()
+    scrape_source_period, calc_term = get_term_selection()
 
     print("─" * 60)
     print("STEP 1 — PowerSchool (grades + assignments)")
     print("─" * 60)
-    await run_powerschool(creds=creds, quarter=scrape_quarter)
+    await run_powerschool(creds=creds, source_period=scrape_source_period)
 
     print()
     print("─" * 60)
     print("STEP 2 — Grade Calculator")
     print("─" * 60)
-    if calc_quarter == 'TREND':
+    if calc_term == 'TREND':
         generate_trend_report(grades_path='grades.json')
     else:
-        generate_full_report(grades_path='grades.json', quarter=calc_quarter)
+        generate_full_report(grades_path='grades.json', term=calc_term)
 
     print()
     print("─" * 60)

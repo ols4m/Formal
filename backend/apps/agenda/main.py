@@ -15,49 +15,53 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.db import get_db, init_db
+from core.profile import (
+    get_current_term,
+    load_profile,
+    normalize_category_name,
+    source_periods_for_term,
+)
 
 # ──────────────────────────────────────────────
 # PRIORITY ENGINE
 # ──────────────────────────────────────────────
 
-TARGET_GRADE  = 93.0
-LOOKAHEAD_DAYS = 14
-
-CATEGORY_WEIGHTS = {
-    "Classwork": 0.35, "CW": 0.35,
-    "Homework":  0.20, "HW": 0.20,
-    "Quizzes":   0.15, "Quiz": 0.15,
-    "Tests":     0.15, "Test": 0.15,
-    "Interim Assessment": 0.15, "IA": 0.15,
-}
-
-VOLATILITY_BOOST = {
-    "Tests": 0.4, "Test": 0.4,
-    "Interim Assessment": 0.4, "IA": 0.4,
-    "Quizzes": 0.2, "Quiz": 0.2,
-    "Homework": 0.0, "HW": 0.0,
-    "Classwork": 0.0, "CW": 0.0,
-}
-
-
-def compute_priority(category, points_possible, current_grade, cat_points_so_far, due_date_str):
+def compute_priority(
+    category,
+    points_possible,
+    current_grade,
+    cat_points_so_far,
+    due_date_str,
+    course_name=None,
+    profile=None,
+):
+    profile = profile or load_profile()
+    grading = profile["grading"]
+    category = normalize_category_name(category)
+    category_config = profile.get("categories", {}).get(category, {})
+    course_config = profile.get("courses", {}).get(course_name, {}) if course_name else {}
+    course_weights = {
+        normalize_category_name(name): weight
+        for name, weight in course_config.get("category_weights", {}).items()
+    }
     today = date.today()
-    wc    = CATEGORY_WEIGHTS.get(category, 0.20)
+    wc    = course_weights.get(category, category_config.get("weight", 0.20))
     total = cat_points_so_far + points_possible
     i_val = points_possible / total if total > 0 else 1.0
-    r_val = max(0.0, (TARGET_GRADE - current_grade) / 100)
+    r_val = max(0.0, (grading["target_grade"] - current_grade) / 100)
 
     if due_date_str:
         try:
             due = datetime.strptime(due_date_str, "%Y-%m-%d").date()
             days_left = (due - today).days
         except ValueError:
-            days_left = LOOKAHEAD_DAYS
+            days_left = grading.get("lookahead_days", 14)
     else:
-        days_left = LOOKAHEAD_DAYS
+        days_left = grading.get("lookahead_days", 14)
 
-    u_val = max(0.0, min(1.0, 1 - (days_left / LOOKAHEAD_DAYS)))
-    v_val = VOLATILITY_BOOST.get(category, 0.0)
+    lookahead_days = grading.get("lookahead_days", 14)
+    u_val = max(0.0, min(1.0, 1 - (days_left / lookahead_days)))
+    v_val = category_config.get("volatility", 0.0)
     p     = max(0.0, min(1.0, wc * i_val * r_val * u_val * (1 + v_val)))
     return p, days_left, round(i_val * 100, 1)
 
@@ -76,24 +80,35 @@ TIER_LABEL = {"S": "🔥 S", "A": "⚠️  A", "B": "📌 B", "C": "🧱 C", "D"
 # DB HELPERS
 # ──────────────────────────────────────────────
 
-def latest_grade(conn, course):
-    row = conn.execute(
-        """SELECT numeric_grade FROM grades
-           WHERE course = ?
-           ORDER BY scraped_at DESC LIMIT 1""",
-        (course,),
-    ).fetchone()
-    return row["numeric_grade"] if row and row["numeric_grade"] is not None else 85.0
+def latest_grade(conn, course, term, source_periods):
+    for source_period in reversed(source_periods):
+        row = conn.execute(
+            """SELECT numeric_grade FROM grades
+               WHERE course = ? AND term = ? AND source_period = ?
+               ORDER BY scraped_at DESC LIMIT 1""",
+            (course, term, source_period),
+        ).fetchone()
+        if row and row["numeric_grade"] is not None:
+            return row["numeric_grade"]
+    return 85.0
 
 
-def cat_points(conn, course, category):
-    row = conn.execute(
-        """SELECT SUM(possible) AS total FROM assignments
-           WHERE course = ? AND category = ? AND possible IS NOT NULL
-             AND scraped_at = (SELECT MAX(scraped_at) FROM assignments WHERE course = ?)""",
-        (course, category, course),
-    ).fetchone()
-    return row["total"] or 0.0
+def cat_points(conn, course, category, term):
+    rows = conn.execute(
+        """SELECT category, SUM(possible) AS total FROM assignments
+           WHERE course = ? AND term = ? AND possible IS NOT NULL
+             AND scraped_at = (
+                 SELECT MAX(scraped_at) FROM assignments WHERE course = ? AND term = ?
+             )
+           GROUP BY category""",
+        (course, term, course, term),
+    ).fetchall()
+    canonical_category = normalize_category_name(category)
+    return sum(
+        row["total"] or 0.0
+        for row in rows
+        if normalize_category_name(row["category"] or "") == canonical_category
+    )
 
 
 # ──────────────────────────────────────────────
@@ -101,6 +116,9 @@ def cat_points(conn, course, category):
 # ──────────────────────────────────────────────
 
 def print_tasks(show_all=False):
+    profile = load_profile()
+    term = get_current_term(profile)["name"]
+    source_periods = source_periods_for_term(term, profile)
     init_db()
     conn = get_db()
 
@@ -121,10 +139,12 @@ def print_tasks(show_all=False):
         course   = task.get("course") or ""
         category = task.get("category") or "Homework"
         points   = task.get("possible_points") or 100.0
-        grade    = latest_grade(conn, course) if course else 85.0
-        cp       = cat_points(conn, course, category) if course else 0.0
+        grade    = latest_grade(conn, course, term, source_periods) if course else 85.0
+        cp       = cat_points(conn, course, category, term) if course else 0.0
 
-        p, days_left, impact = compute_priority(category, points, grade, cp, task.get("due_date"))
+        p, days_left, impact = compute_priority(
+            category, points, grade, cp, task.get("due_date"), course, profile
+        )
         task["priority"] = p
         task["tier"]     = get_tier(p)
         task["days_left"] = days_left
@@ -136,7 +156,7 @@ def print_tasks(show_all=False):
 
     print()
     print("=" * 85)
-    print(f"  THE AGENDA — {date.today()}   |   Target: {TARGET_GRADE}%   |   Lookahead: {LOOKAHEAD_DAYS}d")
+    print(f"  THE AGENDA — {date.today()}   |   Target: {profile['grading']['target_grade']}%   |   Lookahead: {profile['grading'].get('lookahead_days', 14)}d")
     print("=" * 85)
     print(f"  {'TIER':<6}  {'SCORE':>7}  {'DAYS':>4}  {'SOURCE':<10}  {'COURSE':<22}  TASK")
     print("-" * 85)
@@ -162,13 +182,15 @@ def print_grades():
     conn = get_db()
 
     rows = conn.execute(
-        """SELECT g.course, g.course_type, g.letter_grade, g.numeric_grade, g.quarter, g.scraped_at
+        """SELECT g.course, g.course_type, g.letter_grade, g.numeric_grade,
+                  g.term, g.source_period, g.scraped_at
            FROM grades g
            INNER JOIN (
-               SELECT course, MAX(scraped_at) AS latest
+               SELECT course, source_period, MAX(scraped_at) AS latest
                FROM grades
-               GROUP BY course
-           ) l ON g.course = l.course AND g.scraped_at = l.latest
+               GROUP BY course, source_period
+           ) l ON g.course = l.course AND g.source_period = l.source_period
+              AND g.scraped_at = l.latest
            ORDER BY g.numeric_grade DESC"""
     ).fetchall()
     conn.close()
@@ -181,10 +203,10 @@ def print_grades():
     print("=" * 55)
     print(f"  GRADE SNAPSHOT — {date.today()}")
     print("=" * 55)
-    print(f"  {'COURSE':<30}  {'TYPE':<8}  {'QTR':<4}  {'GRADE'}")
-    print("-" * 60)
+    print(f"  {'COURSE':<30}  {'TYPE':<8}  {'TERM':<16}  {'PERIOD':<8}  {'GRADE'}")
+    print("-" * 78)
     for r in rows:
-        print(f"  {r['course'][:30]:<30}  {(r['course_type'] or ''):<8}  {(r['quarter'] or ''):<4}  {r['letter_grade']} ({r['numeric_grade']}%)")
+        print(f"  {r['course'][:30]:<30}  {(r['course_type'] or ''):<8}  {(r['term'] or ''):<16}  {(r['source_period'] or ''):<8}  {r['letter_grade']} ({r['numeric_grade']}%)")
     print("=" * 55)
     print()
 
