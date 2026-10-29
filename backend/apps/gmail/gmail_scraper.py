@@ -38,74 +38,6 @@ SCOPES     = ['https://www.googleapis.com/auth/gmail.readonly']
 # CLASSIFIER
 # ==========================================
 
-_PATTERNS = {
-    # Must match subject — these are unambiguous school signals
-    'assignment': re.compile(
-        r'\b(homework|assignment|classwork|problem set|worksheet|turn in|AP exam|exam terms|career pathways)\b',
-        re.IGNORECASE
-    ),
-    # Must match subject — require PowerSchool/gradebook source signals, not just the word "grade"
-    'grade': re.compile(
-        r'\b(gradebook|powerschool|report card|points earned|your grade|GPA update|grade report)\b',
-        re.IGNORECASE
-    ),
-    # Financial activity — very specific phrases that only appear in real bank/payment emails
-    'transaction': re.compile(
-        r'\b(you spent|direct debit|payment sent|payment received|your receipt|order confirmed|'
-        r'your payment|payment at|payment of|a payment from|amount due|balance due|'
-        r'purchase confirmed|transaction alert|bank transfer|you were charged)\b',
-        re.IGNORECASE
-    ),
-    # College/scholarship/financial aid signals — checked BEFORE deadline so college emails land here
-    'opportunity': re.compile(
-        r'\b(scholarship|financial aid|fellowship|internship|stipend|'
-        r'fafsa|hesaa|eof program|aid award|grant|'
-        r'admissions|enrollment deposit|open house|campus visit|'
-        r'congratulations.*admitted|you have been admitted|application status)\b',
-        re.IGNORECASE
-    ),
-    # Deadline: require a specific action + time signal, not just "apply by" in marketing copy
-    'deadline': re.compile(
-        r'\b(action required|verify your|activate your|complete by|respond by|'
-        r'submission closes|final deadline|last chance|'
-        r'rsvp\s+(?:by|before|now)|due\s+(?:by|date)[:\s]|expires\s+(?:in|on))\b',
-        re.IGNORECASE
-    ),
-}
-
-# Worth surfacing — informational but not urgent
-_WORTH_LOOKING_PATTERNS = re.compile(
-    r'\b(fellow reminder|backrs|stanford|harvard|yale|columbia|MIT\b|'
-    r'upcoming event|webinar|virtual session|info session|'
-    r'thinking ahead|preparing for|open house|campus tour)\b',
-    re.IGNORECASE
-)
-
-# Senders that are always noise regardless of subject
-_NOISE_SENDERS = re.compile(
-    r'(linkedin\.com|substack\.com|medium\.com|mailchimp|sendgrid|'
-    r'constantcontact|klaviyo|hubspot|indeed\.com|glassdoor|'
-    r'noreply@|no-reply@|donotreply@|do-not-reply@|'
-    r'nike\.com|adidas\.|poshmark\.com|goat\.com|ssense\.|'
-    r'canva|adobe\.|chess\.com|dunkin|sugarwish|customink|'
-    r'generalassemb|info\.generalasse)',
-    re.IGNORECASE
-)
-
-# General marketing/promotional signals — not tied to specific emails
-_NOISE_PATTERNS = re.compile(
-    r'(\d+%\s*off|free shipping|\bsale\b|promo code|coupon|'
-    r'unsubscribe|newsletter|weekly digest|digest email|'
-    r'product update|new feature|changelog|release notes|'
-    r'recently posted|share their thought|and others (commented|reacted|shared)|'
-    r'wants \d+% off|order by \w+day|'
-    r'level up your|free \d+-hour|\bperfected\b|learn .{1,25} skills|'
-    r'sneakers of the week|boost your beverage|designers people|'
-    r'play coach|running style|work with pdfs|custom gifts|'
-    r'smarter campaigns|just in time for|TL;DR of)',
-    re.IGNORECASE
-)
-
 _DATE_PATTERN = re.compile(
     r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December)'
     r'\s+\d{1,2}(?:,\s*\d{4})?\b'
@@ -149,14 +81,12 @@ _ACTION_PATTERN = re.compile(
 )
 
 ROUTES = {
-    'assignment':  ['agenda'],
-    'grade':       ['gradebook'],
+    'task':        ['agenda'],
+    'event':       ['agenda'],
     'transaction': ['checkbook'],
-    'deadline':    ['agenda'],
     'opportunity': ['agenda'],
-    'other':        [],
-    'worth a look': [],
-    'noise':        [],
+    'noise':       [],
+    'other':       [],
 }
 
 
@@ -191,226 +121,136 @@ def extract_action_items(body: str) -> list[str]:
     return items[:5]  # cap at 5 so it doesn't explode
 
 
-_GROQ_SYSTEM = """You are the intake classifier for Formal, a personal life OS for Samuel, a high school senior who:
-- Is applying to college (Rutgers, RIT, Kean, NJIT, Rowan, and others)
-- Works at In-Tandem, a youth program
-- Tracks finances and purchases
-- Routes email data to: Agenda (tasks/deadlines), Gradebook (grades), Checkbook (transactions)
+# ── Groq classifier ───────────────────────────────────────────────────────────
 
-CATEGORIES — pick exactly one per email:
-- assignment  : school work, AP exams, homework, classwork
-- grade       : grade reports, scores, GPA, PowerSchool, report cards
-- transaction : purchases, payments, receipts, bank activity, money sent/received
-- deadline    : time-sensitive action required (enrollment deadlines, RSVP, verify account)
-- opportunity : college admissions, scholarships, financial aid, fellowships, internships
-- noise       : marketing, promotions, newsletters, product announcements, brand emails, AI course ads, beverage deals, sneaker sales, Canva tips, anything selling something Samuel didn't ask for
-- other       : everything that doesn't fit above
+_AUTO_NOISE_TABS = {'promotions', 'social', 'forums'}
 
-NOISE RULE — if the email is trying to sell something, promote a product, or is a newsletter Samuel didn't request, it is ALWAYS noise, even if it mentions AI, skills, or opportunities."""
+VALID_CATEGORIES = {'task', 'event', 'transaction', 'opportunity', 'noise', 'other'}
 
 
-def _classify_with_regex(subject: str, body: str) -> dict:
-    """Regex-only classifier — subject matches are high confidence, body matches lower."""
-    body_snippet = body[:600]
-
-    # Priority order matters: transaction and assignment are unambiguous;
-    # opportunity checked before deadline so college emails don't become deadlines.
-    for cat in ('assignment', 'transaction', 'grade', 'opportunity', 'deadline'):
-        if _PATTERNS[cat].search(subject):
-            return _empty_classification(cat, 0.80)
-        if _PATTERNS[cat].search(body_snippet):
-            return _empty_classification(cat, 0.60)
-
-    if _WORTH_LOOKING_PATTERNS.search(subject):
-        return _empty_classification('worth a look', 0.60)
-    if _WORTH_LOOKING_PATTERNS.search(body_snippet):
-        return _empty_classification('worth a look', 0.45)
-
-    return _empty_classification('other', 0.3)
-
-
-def _noise_check(subject: str, sender: str) -> bool:
-    """True if email should be filtered as noise before hitting Groq."""
-    if _NOISE_PATTERNS.search(subject) or _NOISE_SENDERS.search(sender):
-        # Never drop transactions or opportunities even from noisy/noreply senders
-        if _PATTERNS['transaction'].search(subject) or _PATTERNS['opportunity'].search(subject):
-            return False
-        return True
-    return False
-
-
-def _noise_result() -> dict:
+def _make_noise(email: dict) -> dict:
     return {
-        'category': 'noise', 'confidence': 1.0,
+        **email,
+        'category': 'noise', 'confidence': 0.95, 'summary': None,
         'deadline': None, 'financial_impact': False,
-        'amounts': [], 'merchant': None,
-        'action_items': [], 'routes_to': [], 'summary': None,
+        'amounts': [], 'merchant': None, 'action_items': [], 'routes_to': [],
     }
 
 
-def _finalize(result: dict, subject: str, body: str) -> dict:
-    """Attach amounts, merchant, routes, and action items after Groq classification."""
-    full = f"{subject} {body}"
-    result['amounts'] = extract_amounts(full)
-    result['merchant'] = extract_merchant(full) if result.get('category') == 'transaction' else None
-    result['routes_to'] = ROUTES.get(result.get('category', 'other'), [])
-    result['financial_impact'] = bool(_FINANCIAL_PATTERN.search(full))
-    result['action_items'] = extract_action_items(body or subject)
-    return result
-
-
-def classify_email(subject: str, body: str, sender: str, is_important: bool = False) -> dict:
-    """Single-email classify — used when not batching."""
-    if _noise_check(subject, sender):
-        return _noise_result()
-    result = _classify_with_groq(subject, body[:800], sender, is_important)
-    return _finalize(result, subject, body)
-
-
-def classify_batch(emails: list[dict]) -> list[dict]:
-    """Classify a list of email dicts in one Groq call. Returns results in same order."""
-    from groq import Groq
-
-    api_key = os.getenv('GROQ_API_KEY', '')
-    if not api_key:
-        return [_finalize(_empty_classification('other', 0.0, 'No GROQ_API_KEY'), e['subject'], e.get('body', '')) for e in emails]
-
-    def _safe(text: str, limit: int) -> str:
-        """Strip control chars and non-ASCII that can corrupt JSON responses."""
-        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text or '')
-        text = text.encode('ascii', 'ignore').decode('ascii')
-        return text[:limit].replace('\n', ' ')
-
-    # Build numbered email list for the prompt
-    lines = []
-    for i, e in enumerate(emails):
-        imp = 'IMPORTANT' if e.get('is_important') else 'normal'
-        lines.append(
-            f"[{i}] importance={imp}\n"
-            f"  From: {_safe(e['from'], 80)}\n"
-            f"  Subject: {_safe(e['subject'], 120)}\n"
-            f"  Body: {_safe(e.get('body', ''), 150)}"
-        )
-
-    prompt = (
-        _GROQ_SYSTEM + "\n\n"
-        "Classify each email below. Return a JSON ARRAY with one object per email, indexed 0 to "
-        f"{len(emails)-1}. No markdown, no extra text — only the JSON array.\n\n"
-        "Each object must have:\n"
-        '  {"index": N, "category": "...", "confidence": 0.0-1.0, '
-        '"deadline": "date or null", "summary": "1 sentence or null"}\n\n'
-        + '\n\n'.join(lines)
-    )
-
-    try:
-        client = Groq(api_key=api_key)
-        response = client.chat.completions.create(
-            model='llama-3.1-8b-instant',
-            messages=[{'role': 'user', 'content': prompt}],
-            temperature=0.1,
-            max_tokens=80 * len(emails),
-        )
-        raw = response.choices[0].message.content.strip()
-        raw = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw)
-        # Extract just the JSON array in case Groq appends commentary after it
-        start = raw.find('[')
-        end = raw.rfind(']') + 1
-        if start != -1 and end > start:
-            raw = raw[start:end]
-        parsed = json.loads(raw)
-
-        # Build index → result map
-        by_index = {}
-        for item in parsed:
-            idx = item.get('index')
-            if idx is not None:
-                by_index[idx] = {
-                    'category':   item.get('category', 'other'),
-                    'confidence': float(item.get('confidence', 0.5)),
-                    'deadline':   item.get('deadline'),
-                    'summary':    item.get('summary'),
-                }
-
-        results = []
-        for i, e in enumerate(emails):
-            base = by_index.get(i) or _classify_with_regex(e['subject'], e.get('body', ''))
-            results.append(_finalize(base, e['subject'], e.get('body', '')))
-        return results
-
-    except Exception as ex:
-        print(f'  ⚠️  Groq batch failed ({ex.__class__.__name__}: {ex}) — falling back to regex')
-        return [_finalize(_classify_with_regex(e['subject'], e.get('body', '')), e['subject'], e.get('body', '')) for e in emails]
-
-
-def _classify_with_groq(subject: str, body_snippet: str, sender: str, is_important: bool = False) -> dict:
-    """Single-email Groq call (used as fallback)."""
-    from groq import Groq
-
-    api_key = os.getenv('GROQ_API_KEY', '')
-    if not api_key:
-        return _empty_classification('other', 0.0, 'No GROQ_API_KEY set')
-
-    prompt = (
-        _GROQ_SYSTEM + "\n\n"
-        "Return ONLY valid JSON, no markdown:\n"
-        '{"category":"...","confidence":0.0,"deadline":"...or null","summary":"...or null"}\n\n'
-        f'Gmail marked this as important: {"YES — treat this seriously" if is_important else "no"}\n\n'
-        f"From: {sender}\nSubject: {subject}\nBody: {body_snippet}"
-    )
-
-    try:
-        client   = Groq(api_key=api_key)
-        response = client.chat.completions.create(
-            model='llama-3.1-8b-instant',
-            messages=[{'role': 'user', 'content': prompt}],
-            temperature=0.1,
-            max_tokens=150,
-        )
-        raw = response.choices[0].message.content.strip()
-        raw = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw)
-        data = json.loads(raw)
-        return {
-            'category':   data.get('category', 'other'),
-            'confidence': float(data.get('confidence', 0.5)),
-            'deadline':   data.get('deadline'),
-            'summary':    data.get('summary'),
-        }
-    except Exception as e:
-        return _classify_with_regex(subject, body_snippet)
-
-
-def _empty_classification(category: str, confidence: float, reason: str = '') -> dict:
+def _make_result(email: dict, category: str, confidence: float,
+                 summary: str | None, deadline: str | None) -> dict:
+    body = email.get('body', '')
+    full = email.get('subject', '') + ' ' + body
     return {
-        'category':     category,
-        'confidence':   confidence,
-        'deadline':     None,
-        'summary':      reason or None,
-        'action_items': [],
+        **email,
+        'category':        category,
+        'confidence':      confidence,
+        'summary':         summary,
+        'deadline':        deadline,
+        'financial_impact': bool(_FINANCIAL_PATTERN.search(full)),
+        'amounts':         extract_amounts(full),
+        'merchant':        extract_merchant(full) if category == 'transaction' else None,
+        'action_items':    extract_action_items(body),
+        'routes_to':       ROUTES.get(category, []),
     }
 
 
-def _classify_with_ollama(subject: str, body_snippet: str) -> tuple:
-    """Legacy Ollama fallback — kept for offline use."""
+def _classify_one(email: dict, client) -> dict:
+    """Classify a single email with Groq. Returns a fully populated result dict."""
+    tab          = email.get('gmail_tab', 'unknown')
+    is_important = email.get('is_important', False)
+    subject      = email.get('subject', '')
+    sender       = email.get('from', '')
+    body         = (email.get('body') or '')[:600]
+
+    # Fast path: non-important promotions/social are noise without an LLM call
+    if tab in _AUTO_NOISE_TABS and not is_important:
+        return _make_noise(email)
+
+    importance_line = (
+        "★ IMPORTANT — Gmail flagged this as significant based on the user's own email behavior."
+        if is_important else
+        "normal (Gmail did not flag as important)"
+    )
+
+    prompt = f"""You are classifying one email for a personal life OS. Return ONLY a JSON object — no markdown, no extra text.
+
+Gmail signals:
+  importance: {importance_line}
+  tab: {tab}
+
+Email:
+  From: {sender[:80]}
+  Subject: {subject[:120]}
+  Body: {body}
+
+Categories (pick one):
+  task        — user must actively do something: reply, confirm, verify, submit, pay, complete a form
+  event       — scheduled event user is invited to: meeting, webinar, call, appointment (subject starts with "Invitation:")
+  transaction — financial activity: purchase confirmed, payment received/sent, charge, refund, statement, shipping update
+  opportunity — worth considering but no hard deadline: job posting, scholarship, internship, paid program, survey with reward
+  noise       — unsolicited: marketing, promotions, sale ads, social notifications, system confirmations needing no action
+  other       — genuinely doesn't fit any category above
+
+Rules:
+  - ★ IMPORTANT emails: classify carefully — almost never "other", usually task/transaction/opportunity/event
+  - promotions/social tab + not important → noise
+  - updates/primary tab → read carefully, likely actionable
+  - "Invitation:" subject → event
+  - Order/shipping confirmations with no required response → transaction (not task)
+  - Civic/voting messages, class group blasts → other (not task)
+  - Pure system confirmations (password changed, email confirmed) → other (already done, no action)
+
+Return: {{"category": "task|event|transaction|opportunity|noise|other", "confidence": 0.0-1.0, "summary": "one sentence describing what the user needs to do, or null if noise/other", "deadline": "specific date if mentioned or null"}}"""
+
     try:
-        import ollama
-        prompt = (
-            "Classify this email into exactly one category: "
-            "assignment, grade, transaction, deadline, opportunity, other.\n\n"
-            f"Subject: {subject}\nBody: {body_snippet}\n\n"
-            "Reply with just the category word, nothing else."
+        response = client.chat.completions.create(
+            model='qwen/qwen3.8-27b',
+            messages=[{'role': 'user', 'content': prompt}],
+            temperature=0.1,
+            max_tokens=512,
         )
-        response = ollama.chat(
-            model='llama3.2',
-            messages=[{'role': 'user', 'content': prompt}]
-        )
-        raw      = response['message']['content'].strip().lower().split()[0]
-        category = raw if raw in _PATTERNS else 'other'
-        return category, 0.7
-    except Exception:
-        # Ollama not installed or model not pulled — silently fall back
-        return 'other', 0.0
+        raw = response.choices[0].message.content.strip()
+        # Strip Qwen3 thinking blocks (<think>...</think>)
+        raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+        # Strip markdown fences if present
+        raw = re.sub(r'^```(?:json)?\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw)
+        start, end = raw.find('{'), raw.rfind('}') + 1
+        if start != -1 and end > start:
+            data = json.loads(raw[start:end])
+            cat = data.get('category', 'other')
+            if cat not in VALID_CATEGORIES:
+                cat = 'other'
+            return _make_result(
+                email, cat,
+                float(data.get('confidence', 0.5)),
+                data.get('summary'),
+                data.get('deadline'),
+            )
+    except Exception as ex:
+        pass
+
+    return _make_result(email, 'other', 0.0, None, None)
+
+
+def classify_emails(emails: list[dict]) -> list[dict]:
+    """Classify all emails. Groq is the primary classifier; tab+importance filter obvious noise."""
+    api_key = os.getenv('GROQ_API_KEY', '')
+    if not api_key:
+        print('  ⚠️  GROQ_API_KEY not set — all emails marked other.')
+        return [_make_result(e, 'other', 0.0, None, None) for e in emails]
+
+    from groq import Groq
+    client  = Groq(api_key=api_key)
+    results = []
+
+    for i, email in enumerate(emails, 1):
+        if i % 10 == 0 or i == len(emails):
+            print(f'  Classifying {i}/{len(emails)}...')
+        results.append(_classify_one(email, client))
+
+    return results
 
 
 # ==========================================
@@ -546,6 +386,14 @@ def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> list:
 
             body = _extract_body(full['payload'])
 
+            label_ids = full.get('labelIds', [])
+            gmail_categories = [
+                l.replace('CATEGORY_', '').lower()
+                for l in label_ids
+                if l.startswith('CATEGORY_')
+            ]
+            gmail_tab = gmail_categories[0] if gmail_categories else 'primary'
+
             emails.append({
                 'id':         msg['id'],
                 'from':       sender,
@@ -554,7 +402,8 @@ def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> list:
                 'date':       date_str,
                 'body':       body[:2000],
                 'source':     'personal',
-                'is_important': 'IMPORTANT' in full.get('labelIds', []),
+                'gmail_tab':  gmail_tab,
+                'is_important': 'IMPORTANT' in label_ids,
             })
         except Exception:
             continue
@@ -675,36 +524,13 @@ async def main(creds: tuple = None, days: int = None):
     print('GMAIL — Classify & Route')
     print('─' * 60)
 
-    results         = []
     category_counts = {}
-    BATCH_SIZE      = 15
 
-    # Split emails: instant noise filter vs Groq queue
-    noise_results = []
-    groq_queue    = []
-    for em in all_emails:
-        if _noise_check(em['subject'], em['from']):
-            noise_results.append({**em, **_noise_result()})
-        else:
-            groq_queue.append(em)
-
-    # Batch classify remaining emails
-    groq_classified = []
-    for i in range(0, len(groq_queue), BATCH_SIZE):
-        batch = groq_queue[i:i + BATCH_SIZE]
-        batch_end = min(i + BATCH_SIZE, len(groq_queue))
-        print(f'  Classifying emails {i+1}–{batch_end} of {len(groq_queue)}...')
-        classifications = classify_batch(batch)
-        for em, cl in zip(batch, classifications):
-            groq_classified.append({**em, **cl})
-
-    all_classified = noise_results + groq_classified
-    for r in all_classified:
+    results = classify_emails(all_emails)
+    for r in results:
         route_to_db(r, r)
         cat = r['category']
         category_counts[cat] = category_counts.get(cat, 0) + 1
-
-    results = all_classified
 
     now_iso = datetime.now(timezone.utc).isoformat() + 'Z'
 
@@ -730,17 +556,16 @@ async def main(creds: tuple = None, days: int = None):
 
     noise_count = category_counts.get('noise', 0)
     other_count = category_counts.get('other', 0)
+    actionable_count = sum(v for k, v in category_counts.items() if k not in ('noise', 'other'))
     print(f'  ✅ {len(results)} classified → {OUTPUT_PATH}  (+{len(new_emails)} new → {HISTORY_PATH})')
-    print(f'  {noise_count} noise filtered  |  {other_count} unclassified  |  {len(results) - noise_count - other_count} actionable')
+    print(f'  {noise_count} noise  |  {other_count} unclassified  |  {actionable_count} actionable')
 
-    CATEGORY_ORDER = ['assignment', 'deadline', 'grade', 'transaction', 'opportunity', 'worth a look']
+    CATEGORY_ORDER = ['task', 'event', 'transaction', 'opportunity']
     CATEGORY_LABEL = {
-        'assignment':   'ASSIGNMENTS',
-        'deadline':     'DEADLINES',
-        'grade':        'GRADES',
-        'transaction':  'TRANSACTIONS',
-        'opportunity':  'OPPORTUNITIES',
-        'worth a look': 'WORTH A LOOK',
+        'task':        'TASKS',
+        'event':       'EVENTS',
+        'transaction': 'TRANSACTIONS',
+        'opportunity': 'OPPORTUNITIES',
     }
 
     by_cat = {}
@@ -800,7 +625,7 @@ async def main(creds: tuple = None, days: int = None):
     print('\n' + '=' * W)
 
     # ── Action items ───────────────────────────────────────
-    ACTION_CATS = {'assignment', 'deadline', 'opportunity'}
+    ACTION_CATS = {'task', 'event', 'opportunity'}
     actionable = [r for r in results if r['category'] in ACTION_CATS and r.get('action_items')]
     # Sort: Gmail Important first, then by confidence
     actionable.sort(key=lambda x: (-x.get('is_important', False), -x['confidence']))
