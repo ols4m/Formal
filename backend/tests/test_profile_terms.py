@@ -5,6 +5,8 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
+from core import db
+from core.items import Item, ItemRepository, sync_adapter
 from apps.gradebook.calculator import (
     calculate_assignment_impact,
     calculate_class_grade_weighted,
@@ -14,7 +16,6 @@ from apps.gradebook.calculator import (
 from apps.gradebook.priority import calculate_priority
 from apps.gradebook import powerschool_scraper
 from apps.gradebook.powerschool_scraper import save_to_db
-from core import db
 from core.db import _migrate_period_columns
 from core.profile import get_current_term, validate_profile
 
@@ -201,6 +202,64 @@ class ProfileTermsTests(unittest.TestCase):
                 self.assertEqual(tuple(grade), ("Term A", "Q1"))
                 self.assertEqual(tuple(assignment), ("Term A", "Q2"))
                 connection.close()
+
+
+class ItemsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_adapter_sync_upserts_stably_without_overwriting_user_status(self):
+        class ExampleAdapter:
+            source = "calendar"
+
+            async def fetch(self):
+                return [
+                    Item(
+                        source="calendar",
+                        source_item_id="event-1",
+                        item_type="event",
+                        title="Application meeting",
+                        due_at="2026-10-25T15:00:00Z",
+                        raw_payload={"calendar": "personal"},
+                    )
+                ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "formal.db"
+            with patch.object(db, "DB_PATH", database_path):
+                db.init_db()
+                repository = ItemRepository()
+                adapter = ExampleAdapter()
+                self.assertEqual(await sync_adapter(adapter, repository), 1)
+                item = repository.list_items()[0]
+                self.assertEqual(item["source"], "calendar")
+                self.assertEqual(item["item_type"], "event")
+                self.assertEqual(item["raw_payload"], {"calendar": "personal"})
+
+                repository._connection.execute(
+                    "UPDATE items SET status = 'done' WHERE source_item_id = 'event-1'"
+                )
+                self.assertEqual(await sync_adapter(adapter, repository), 1)
+                items = repository.list_items(status=None)
+                self.assertEqual(len(items), 1)
+                self.assertEqual(items[0]["status"], "done")
+                repository.close()
+
+    async def test_adapter_cannot_write_items_under_another_source(self):
+        class MismatchedAdapter:
+            source = "gmail"
+
+            async def fetch(self):
+                return [
+                    Item(source="calendar", item_type="task", title="Wrong source")
+                ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "formal.db"
+            with patch.object(db, "DB_PATH", database_path):
+                db.init_db()
+                repository = ItemRepository()
+                with self.assertRaisesRegex(ValueError, "mismatched source"):
+                    await sync_adapter(MismatchedAdapter(), repository)
+                self.assertEqual(repository.list_items(status=None), [])
+                repository.close()
 
 
 if __name__ == "__main__":

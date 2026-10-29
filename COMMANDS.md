@@ -41,6 +41,10 @@ prints a warning. Terms are date-based, and `source_periods` map portal labels
 such as `Q1` to configured terms such as `Fall 2026`. Course profiles support
 individual credits, weighted GPA eligibility, and category-weight overrides.
 
+The shared database also has a source-neutral `items` pool and adapter contract
+in `core/items.py`. Existing Gmail/Agenda `tasks` remain intact while intake
+sources are moved to the common model incrementally.
+
 ---
 
 ## Grade calculator only
