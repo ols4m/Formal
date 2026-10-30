@@ -10,8 +10,9 @@ from typing import Literal, Protocol, Sequence
 from core.db import get_db, init_db
 
 
-ItemType = Literal["task", "event", "note", "transaction", "file"]
-ITEM_TYPES = {"task", "event", "note", "transaction", "file"}
+ItemType = Literal["task", "event", "note", "transaction", "file", "record"]
+ITEM_TYPES = {"task", "event", "note", "transaction", "file", "record"}
+VALID_STATUSES = {"open", "done", "deferred", "archived"}
 
 
 def _utc_now() -> str:
@@ -149,6 +150,32 @@ class ItemRepository:
             {**dict(row), "raw_payload": json.loads(row["raw_payload"])}
             for row in rows
         ]
+
+
+    def update_status(
+        self, item_id: str, status: str, defer_until: str | None = None
+    ) -> bool:
+        """Set a new status on one item; return True if a row was updated.
+
+        When status is 'deferred' and defer_until is supplied, due_at is updated
+        so the item re-enters the ranked list at the right time.
+        """
+        if status not in VALID_STATUSES:
+            raise ValueError(f"Invalid status: {status!r}")
+        now = _utc_now()
+        with self._connection:
+            if status == "deferred" and defer_until is not None:
+                self._connection.execute(
+                    "UPDATE items SET status=?, due_at=?, updated_at=? WHERE id=?",
+                    (status, defer_until, now, item_id),
+                )
+            else:
+                self._connection.execute(
+                    "UPDATE items SET status=?, updated_at=? WHERE id=?",
+                    (status, now, item_id),
+                )
+            changed = self._connection.execute("SELECT changes()").fetchone()[0]
+        return changed > 0
 
 
 async def sync_adapter(adapter: ItemAdapter, repository: ItemRepository) -> int:

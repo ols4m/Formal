@@ -38,9 +38,20 @@ class ScoreResult(TypedDict):
     reasons: dict
 
 
-def _urgency(due_at: str | None, now: datetime) -> float:
+_URGENCY_CONTEXT_FLOORS = {
+    "available_window": 0.65,  # window just opened, no hard date but act soon
+    "hard_deadline":    0.30,  # has explicit due_at, handled below
+    "evergreen":        0.20,  # no time pressure
+}
+
+
+def _urgency(due_at: str | None, now: datetime, urgency_context: str | None = None) -> float:
     if due_at is None:
-        return 0.30
+        # None means no context signal — preserve old default of 0.30
+        # Only deviate when Groq explicitly provided a context value
+        if urgency_context is None:
+            return 0.30
+        return _URGENCY_CONTEXT_FLOORS.get(urgency_context, 0.30)
     due = datetime.fromisoformat(due_at.replace("Z", "+00:00"))
     if due.tzinfo is None:
         due = due.replace(tzinfo=timezone.utc)
@@ -74,9 +85,17 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
     """Return priority score, tier, and explainable reasons for one Item."""
     now = now or datetime.now(timezone.utc)
 
-    importance_norm = item.importance / 5.0
+    importance_norm  = item.importance / 5.0
     consequence_norm = item.consequence / 5.0
-    urgency_factor = _urgency(item.due_at, now)
+    payload          = item.raw_payload or {}
+    urgency_context  = payload.get("urgency_context")
+    urgency_factor   = _urgency(item.due_at, now, urgency_context=urgency_context)
+
+    # Gmail-Important items without a deadline get a higher urgency floor
+    # so they always rank above non-important undated items
+    is_important = bool(payload.get("is_important"))
+    if item.due_at is None and is_important:
+        urgency_factor = max(urgency_factor, 0.55)
 
     if item.effort_minutes is not None:
         effort_norm = min(item.effort_minutes / EFFORT_CAP_MINUTES, 1.0)
@@ -100,7 +119,9 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
         "effort_norm": round(effort_norm, 4) if effort_norm is not None else None,
         "value": round(value, 4),
         "due_at": item.due_at,
+        "urgency_context": urgency_context,
         "urgency_factor": round(urgency_factor, 4),
+        "is_important_boost": is_important and item.due_at is None,
         "raw": round(raw, 4),
     }
 

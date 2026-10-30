@@ -83,10 +83,13 @@ _ACTION_PATTERN = re.compile(
 ROUTES = {
     'task':        ['agenda'],
     'event':       ['agenda'],
-    'transaction': ['checkbook'],
     'opportunity': ['agenda'],
+    'financial':   ['checkbook'],
+    'academic':    ['gradebook'],
+    'logistics':   [],
+    'identity':    [],
+    'social':      [],
     'noise':       [],
-    'other':       [],
 }
 
 
@@ -125,31 +128,46 @@ def extract_action_items(body: str) -> list[str]:
 
 _AUTO_NOISE_TABS = {'promotions', 'social', 'forums'}
 
-VALID_CATEGORIES = {'task', 'event', 'transaction', 'opportunity', 'noise', 'other'}
+VALID_CATEGORIES = {
+    # action
+    'task', 'event', 'opportunity',
+    # data
+    'financial', 'academic', 'logistics', 'identity', 'social',
+    # legacy aliases — remapped at parse time
+    'transaction', 'other',
+    # discard
+    'noise',
+}
 
 
 def _make_noise(email: dict) -> dict:
     return {
         **email,
-        'category': 'noise', 'confidence': 0.95, 'summary': None,
-        'deadline': None, 'financial_impact': False,
-        'amounts': [], 'merchant': None, 'action_items': [], 'routes_to': [],
+        'category': 'noise', 'intent': 'noise', 'confidence': 0.95,
+        'consequence': 1, 'urgency_context': 'evergreen',
+        'summary': None, 'deadline': None,
+        'financial_impact': False, 'amounts': [], 'merchant': None,
+        'action_items': [], 'routes_to': [],
     }
 
 
-def _make_result(email: dict, category: str, confidence: float,
+def _make_result(email: dict, category: str, intent: str, confidence: float,
+                 consequence: int, urgency_context: str,
                  summary: str | None, deadline: str | None) -> dict:
     body = email.get('body', '')
     full = email.get('subject', '') + ' ' + body
     return {
         **email,
         'category':        category,
+        'intent':          intent,
         'confidence':      confidence,
+        'consequence':     consequence,
+        'urgency_context': urgency_context,
         'summary':         summary,
         'deadline':        deadline,
         'financial_impact': bool(_FINANCIAL_PATTERN.search(full)),
         'amounts':         extract_amounts(full),
-        'merchant':        extract_merchant(full) if category == 'transaction' else None,
+        'merchant':        extract_merchant(full) if category == 'financial' else None,
         'action_items':    extract_action_items(body),
         'routes_to':       ROUTES.get(category, []),
     }
@@ -161,7 +179,7 @@ def _classify_one(email: dict, client) -> dict:
     is_important = email.get('is_important', False)
     subject      = email.get('subject', '')
     sender       = email.get('from', '')
-    body         = (email.get('body') or '')[:600]
+    body         = (email.get('body') or '')[:1500]
 
     # Fast path: non-important promotions/social are noise without an LLM call
     if tab in _AUTO_NOISE_TABS and not is_important:
@@ -184,24 +202,44 @@ Email:
   Subject: {subject[:120]}
   Body: {body}
 
-Categories (pick one):
-  task        — user must actively do something: reply, confirm, verify, submit, pay, complete a form
-  event       — scheduled event user is invited to: meeting, webinar, call, appointment (subject starts with "Invitation:")
-  transaction — financial activity: purchase confirmed, payment received/sent, charge, refund, statement, shipping update
-  opportunity — worth considering but no hard deadline: job posting, scholarship, internship, paid program, survey with reward
-  noise       — unsolicited: marketing, promotions, sale ads, social notifications, system confirmations needing no action
-  other       — genuinely doesn't fit any category above
+Step 1 — Is this DATA or ACTION?
+  DATA   → an observation about how the user lives. No response needed.
+  ACTION → the user still needs to do something deliberate.
+
+Step 2 — Pick the specific category:
+
+  ACTION categories:
+    task        — deliberate action still possible: reply, submit form, confirm charge, RSVP, pay bill
+    event       — scheduled event the user is invited to: meeting, appointment, webinar, call
+    opportunity — optional but worth considering: scholarship, survey, focus group, challenge, internship
+
+  DATA categories:
+    financial   — financial activity or info: purchase receipt, payment, statement, refund, charge, disbursement
+    logistics   — shipment/delivery status with no response needed: tracking update, delivery confirmation
+    identity    — account/security events already done: OTP, verification code, login alert, password reset, account change
+    academic    — academic data from any platform: grade posted, assignment notification, course announcement, LMS reminder
+    social      — community/social info: alumni update, club digest, event recap, newsletter
+
+  noise         — zero personal signal: pure promotional ads, spam
 
 Rules:
-  - ★ IMPORTANT emails: classify carefully — almost never "other", usually task/transaction/opportunity/event
-  - promotions/social tab + not important → noise
-  - updates/primary tab → read carefully, likely actionable
-  - "Invitation:" subject → event
-  - Order/shipping confirmations with no required response → transaction (not task)
-  - Civic/voting messages, class group blasts → other (not task)
-  - Pure system confirmations (password changed, email confirmed) → other (already done, no action)
+  - If the action already happened and nothing is left to do → DATA, not action
+  - "Invitation:" subject → event (action)
+  - OTP/verification code → identity (data) — expires in minutes, useless by review time
+  - Assignment/grade notification from LMS → academic (data) — LMS is the source of truth for the action
+  - Shipping/delivery update → logistics (data)
+  - ★ IMPORTANT emails: classify carefully, almost never noise
 
-Return: {{"category": "task|event|transaction|opportunity|noise|other", "confidence": 0.0-1.0, "summary": "one sentence describing what the user needs to do, or null if noise/other", "deadline": "specific date if mentioned or null"}}"""
+Return: {{"category": "task|event|opportunity|financial|academic|logistics|identity|social|noise", "intent": "action|data|noise", "confidence": 0.0-1.0, "consequence": 1-5, "urgency_context": "available_window|hard_deadline|evergreen", "summary": "one sentence what the user must do, or null for data/noise", "deadline": "specific date if mentioned or null"}}
+
+consequence — how bad is it if the user ignores this entirely?
+  1=no impact, 2=minor, 3=moderate, 4=significant, 5=serious financial/academic/legal consequence
+Use world knowledge about the domain.
+
+urgency_context — time pressure independent of whether a date is mentioned:
+  available_window — important opportunity just opened; no hard date but the window will close (FAFSA, enrollment, scholarship, benefit application)
+  hard_deadline    — explicit date mentioned or strongly implied by context
+  evergreen        — no real time pressure; can be done anytime"""
 
     try:
         response = client.chat.completions.create(
@@ -219,19 +257,37 @@ Return: {{"category": "task|event|transaction|opportunity|noise|other", "confide
         start, end = raw.find('{'), raw.rfind('}') + 1
         if start != -1 and end > start:
             data = json.loads(raw[start:end])
-            cat = data.get('category', 'other')
+            cat    = data.get('category', 'noise')
+            intent = data.get('intent', 'noise')
+            # Legacy aliases
+            if cat == 'transaction': cat = 'financial'
+            if cat == 'other':       cat = 'noise'
             if cat not in VALID_CATEGORIES:
-                cat = 'other'
+                cat = 'noise'
+            # Derive intent from category if Groq omits it
+            if intent not in ('action', 'data', 'noise'):
+                if cat in ('task', 'event', 'opportunity'):
+                    intent = 'action'
+                elif cat == 'noise':
+                    intent = 'noise'
+                else:
+                    intent = 'data'
+            consequence = max(1, min(5, int(data.get('consequence', 3))))
+            urgency_context = data.get('urgency_context', 'evergreen')
+            if urgency_context not in ('available_window', 'hard_deadline', 'evergreen'):
+                urgency_context = 'evergreen'
             return _make_result(
-                email, cat,
+                email, cat, intent,
                 float(data.get('confidence', 0.5)),
+                consequence,
+                urgency_context,
                 data.get('summary'),
                 data.get('deadline'),
             )
-    except Exception as ex:
+    except Exception:
         pass
 
-    return _make_result(email, 'other', 0.0, None, None)
+    return _make_result(email, 'noise', 'noise', 0.0, 1, 'evergreen', None, None)
 
 
 def classify_emails(emails: list[dict]) -> list[dict]:
@@ -239,7 +295,7 @@ def classify_emails(emails: list[dict]) -> list[dict]:
     api_key = os.getenv('GROQ_API_KEY', '')
     if not api_key:
         print('  ⚠️  GROQ_API_KEY not set — all emails marked other.')
-        return [_make_result(e, 'other', 0.0, None, None) for e in emails]
+        return [_make_result(e, 'other', 'noise', 0.0, 1, 'evergreen', None, None) for e in emails]
 
     from groq import Groq
     client  = Groq(api_key=api_key)
