@@ -23,10 +23,19 @@ from core.priority import score_item, Item
 
 TIER_LABEL = {"S": "🔴 S", "A": "🟠 A", "B": "🟡 B", "C": "🟢 C", "D": "⚪ D"}
 CATEGORY_ICON = {
-    "transaction": "💳",
-    "deadline":    "⏰",
-    "opportunity": "🌟",
     "task":        "✅",
+    "event":       "📅",
+    "opportunity": "🌟",
+    "financial":   "💳",
+    "academic":    "🎓",
+    "logistics":   "📦",
+    "identity":    "🔑",
+    "social":      "💬",
+}
+
+_URGENCY_CONTEXT_LABEL = {
+    "available_window": "[window open]",
+    "hard_deadline":    "[hard deadline]",
 }
 
 
@@ -84,20 +93,34 @@ def show_ranked(repo: ItemRepository, show_all: bool = False) -> None:
     visible = [(s, t, i, r) for s, t, i, r in scored if show_all or t != "D"]
     hidden  = len(scored) - len(visible)
 
+    now = datetime.now(timezone.utc)
     for score, tier, item, reasons in visible:
         payload  = item.raw_payload or {}
         category = payload.get("category", item.item_type)
         icon     = CATEGORY_ICON.get(category, "•")
         tier_str = TIER_LABEL.get(tier, tier)
 
-        print(f"\n  {tier_str}  {icon}  {item.title[:70]}")
-        print(f"      id={item.id}")
-        print(f"      score={score:.2f}  importance={item.importance}  "
-              f"consequence={item.consequence}  "
-              f"effort={item.effort_minutes or '?'}min  "
-              f"urgency={reasons['urgency_factor']:.2f}")
+        # Due date display
+        if item.due_at:
+            due = datetime.fromisoformat(item.due_at.replace("Z", "+00:00"))
+            due_str = "overdue" if due < now else due.strftime("%Y-%m-%d")
+        else:
+            due_str = None
+
+        # Urgency context label (skip evergreen — it's the default)
+        ctx_label = _URGENCY_CONTEXT_LABEL.get(payload.get("urgency_context", ""), "")
+
+        print(f"\n  {tier_str}  {icon}  {item.title[:72]}")
+        meta = f"      id={item.id[:8]}  score={score:.2f}  imp={item.importance}  csq={item.consequence}  effort={item.effort_minutes or '?'}min  urgency={reasons['urgency_factor']:.2f}"
+        if due_str:
+            meta += f"  due={due_str}"
+        if ctx_label:
+            meta += f"  {ctx_label}"
+        print(meta)
         if item.description:
-            print(f"      {item.description[:100]}")
+            desc = item.description[:120]
+            suffix = "..." if len(item.description) > 120 else ""
+            print(f"      {desc}{suffix}")
 
     if hidden:
         print(f"\n  ({hidden} D-tier item(s) hidden — run with 'all' to see)")

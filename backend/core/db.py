@@ -86,7 +86,7 @@ def init_db():
                 source          TEXT NOT NULL,
                 source_item_id  TEXT,
                 item_type       TEXT NOT NULL CHECK (
-                    item_type IN ('task', 'event', 'note', 'transaction', 'file')
+                    item_type IN ('task', 'event', 'note', 'transaction', 'file', 'record')
                 ),
                 title           TEXT NOT NULL,
                 description     TEXT,
@@ -107,6 +107,7 @@ def init_db():
         """)
         _migrate_period_columns(conn, "grades")
         _migrate_period_columns(conn, "assignments")
+        _migrate_items_type_constraint(conn)
     conn.close()
 
 
@@ -143,6 +144,50 @@ def _migrate_period_columns(
                     f"UPDATE {table} SET term = ? WHERE id = ?",
                     (term["name"], row["id"]),
                 )
+
+
+def _migrate_items_type_constraint(conn: sqlite3.Connection) -> None:
+    """Rebuild items table if its CHECK constraint doesn't include 'record'."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='items'"
+    ).fetchone()
+    if row is None or "'record'" in row["sql"]:
+        return  # table doesn't exist yet, or already up to date
+
+    conn.executescript("""
+        PRAGMA foreign_keys=OFF;
+
+        CREATE TABLE items_new (
+            id              TEXT PRIMARY KEY,
+            source          TEXT NOT NULL,
+            source_item_id  TEXT,
+            item_type       TEXT NOT NULL CHECK (
+                item_type IN ('task', 'event', 'note', 'transaction', 'file', 'record')
+            ),
+            title           TEXT NOT NULL,
+            description     TEXT,
+            due_at          TEXT,
+            importance      INTEGER NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
+            effort_minutes  REAL CHECK (effort_minutes IS NULL OR effort_minutes >= 0),
+            consequence     INTEGER NOT NULL DEFAULT 3 CHECK (consequence BETWEEN 1 AND 5),
+            status          TEXT NOT NULL DEFAULT 'open',
+            raw_payload     TEXT NOT NULL DEFAULT '{}',
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL
+        );
+
+        INSERT INTO items_new SELECT * FROM items;
+        DROP TABLE items;
+        ALTER TABLE items_new RENAME TO items;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_items_source_external_id
+            ON items (source, source_item_id)
+            WHERE source_item_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_items_status_due
+            ON items (status, due_at);
+
+        PRAGMA foreign_keys=ON;
+    """)
 
 
 if __name__ == "__main__":

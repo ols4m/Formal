@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
@@ -178,6 +179,8 @@ _STRIP_URL_RE    = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 _STRIP_ENCODE_RE = re.compile(r"[A-Za-z0-9%]{10,}=[A-Za-z0-9%+/=]{10,}")
 _STRIP_MD_RE     = re.compile(r"\*{1,2}(.+?)\*{1,2}")
 _REAL_WORDS_RE   = re.compile(r"[a-zA-Z]{3,}")
+_REPLY_SEP_RE    = re.compile(r"##-.*?-##.*", re.DOTALL)
+_INVISIBLE_RE    = re.compile(r"[\u200b-\u200f\u00ad\ufeff\u034f]+")  # zero-width, soft-hyphen, invisible spacers
 
 _CATEGORY_VERB = {
     "opportunity": "Review",
@@ -187,6 +190,9 @@ _CATEGORY_VERB = {
 
 
 def _clean(text: str) -> str:
+    text = _REPLY_SEP_RE.sub("", text)    # strip reply-thread separators
+    text = html.unescape(text)            # &amp; &#39; → & '
+    text = _INVISIBLE_RE.sub("", text)    # invisible unicode spacers
     text = _STRIP_URL_RE.sub("", text)
     text = _STRIP_ENCODE_RE.sub("", text)
     text = _STRIP_MD_RE.sub(r"\1", text)  # strip **bold** markers
@@ -210,16 +216,18 @@ def _record_title(emails: list[dict], record_type: str) -> str:
 
 
 def _action_title(emails: list[dict], category: str) -> str:
+    is_important = any(e.get("is_important") for e in emails)
+    verb = _CATEGORY_VERB.get(category, "Action" if is_important else "Review")
+    subject = _clean(emails[-1].get("subject", ""))
+    if subject:
+        return f"{verb}: {subject[:100]}"
+    # fallback: first clean action_item when subject is empty
     for email in reversed(emails):
         for raw in email.get("action_items", []):
             cleaned = _clean(raw)
             if len(cleaned) > 15 and _has_real_words(cleaned):
                 return (cleaned[0].upper() + cleaned[1:])[:120]
-
-    subject = _clean(emails[-1].get("subject", ""))
-    is_important = any(e.get("is_important") for e in emails)
-    verb = _CATEGORY_VERB.get(category, "Action" if is_important else "Review")
-    return f"{verb}: {subject[:100]}"
+    return f"{verb}: [no subject]"
 
 
 # ── Informational check ───────────────────────────────────────────────────────
