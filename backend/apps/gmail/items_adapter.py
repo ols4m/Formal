@@ -155,8 +155,6 @@ def _parse_due_at(emails: list[dict]) -> str | None:
         day   = int(m.group(2))
         if month and 1 <= day <= 31:
             year = today.year
-            if not is_event and (month < today.month or (month == today.month and day < today.day)):
-                year += 1
             try:
                 due = datetime(year, month, day, 23, 59, tzinfo=timezone.utc)
                 return due.isoformat().replace("+00:00", "Z")
@@ -168,8 +166,6 @@ def _parse_due_at(emails: list[dict]) -> str | None:
         month, day = int(m.group(1)), int(m.group(2))
         if 1 <= month <= 12 and 1 <= day <= 31:
             year = today.year
-            if not is_event and (month < today.month or (month == today.month and day < today.day)):
-                year += 1
             try:
                 due = datetime(year, month, day, 23, 59, tzinfo=timezone.utc)
                 return due.isoformat().replace("+00:00", "Z")
