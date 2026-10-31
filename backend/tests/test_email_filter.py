@@ -50,7 +50,7 @@ def _mock_client():
 
 
 class TestTabAutoNoise(unittest.TestCase):
-    """1. Promotions/social/forums → noise."""
+    """1. Promotions/social → noise."""
 
     def test_promotions_dropped(self):
         e = _email(gmail_tab='promotions')
@@ -63,10 +63,37 @@ class TestTabAutoNoise(unittest.TestCase):
         r = _classify_one(e, _mock_client())
         self.assertEqual(r['_filter_stage'], 'tab_noise')
 
-    def test_forums_dropped(self):
-        e = _email(gmail_tab='forums')
+class TestForumsGate(unittest.TestCase):
+    """Forums go through the behavioral gate, not hard-dropped."""
+
+    def test_forums_important_passes(self):
+        e = _email(gmail_tab='forums', is_important=True)
         r = _classify_one(e, _mock_client())
-        self.assertEqual(r['_filter_stage'], 'tab_noise')
+        self.assertEqual(r['_filter_stage'], 'groq')
+
+    def test_forums_rare_sender_passes(self):
+        e = _email(gmail_tab='forums', is_important=False,
+                   **{'from': 'regist@drew.edu'})
+        freq = {'drew.edu': 1}
+        eng = {'replied_domains': set(), 'opened_domains': {}}
+        r = _classify_one(e, _mock_client(), engagement_index=eng, frequency_index=freq)
+        self.assertEqual(r['_filter_stage'], 'groq')
+
+    def test_forums_engaged_sender_passes(self):
+        e = _email(gmail_tab='forums', is_important=False,
+                   **{'from': 'health@drew.edu'})
+        freq = {'drew.edu': 10}
+        eng = {'replied_domains': {'drew.edu'}, 'opened_domains': {}}
+        r = _classify_one(e, _mock_client(), engagement_index=eng, frequency_index=freq)
+        self.assertEqual(r['_filter_stage'], 'groq')
+
+    def test_forums_high_freq_no_engagement_dropped(self):
+        e = _email(gmail_tab='forums', is_important=False,
+                   **{'from': 'digest@reddit.com'})
+        freq = {'reddit.com': 20}
+        eng = {'replied_domains': set(), 'opened_domains': {}}
+        r = _classify_one(e, _mock_client(), engagement_index=eng, frequency_index=freq)
+        self.assertEqual(r['_filter_stage'], 'updates_noise')
 
 
 class TestListUnsubscribeRecord(unittest.TestCase):

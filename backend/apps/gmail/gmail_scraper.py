@@ -128,7 +128,7 @@ def extract_action_items(body: str) -> list[str]:
 
 # ── Groq classifier ───────────────────────────────────────────────────────────
 
-_AUTO_NOISE_TABS = {'promotions', 'social', 'forums'}
+_AUTO_NOISE_TABS = {'promotions', 'social'}
 
 # Subject-line signals that indicate an action even on transactional (no List-Unsubscribe) emails.
 # Prevents the record shortcut from swallowing actionable emails.
@@ -377,9 +377,9 @@ def _classify_one(email: dict, client,
     """Classify a single email through the filter pipeline.
 
     Pipeline (first match wins):
-      1. Tab auto-noise   — promotions/social/forums → dropped
+      1. Tab auto-noise   — promotions/social → dropped
       2. No List-Unsubscribe → personal record → items pool (skip Groq)
-      3. Updates gate      — is_important=False + high-freq + low-engagement → dropped
+      3. Updates/forums gate — is_important=False + high-freq + low-engagement → dropped
       4. Everything else   → Groq classifier
     """
     tab     = email.get('gmail_tab', 'unknown')
@@ -387,7 +387,7 @@ def _classify_one(email: dict, client,
     sender  = email.get('from', '')
     body    = (email.get('body') or '')[:1500]
 
-    # ── 1. Tab auto-noise: promotions/social/forums ──────────────────────────
+    # ── 1. Tab auto-noise: promotions/social ───────────────────────────────
     if tab in _AUTO_NOISE_TABS:
         return _make_noise(email, stage='tab_noise')
 
@@ -399,9 +399,9 @@ def _classify_one(email: dict, client,
     if not has_unsub and not _SUBJECT_ACTION_RE.search(subject):
         return _make_record(email)
 
-    # ── 3. Updates gate: behavioral signals for mass-sent updates ────────────
+    # ── 3. Updates/forums gate: behavioral signals for mass-sent mail ───────
     is_important = email.get('is_important', False)
-    if tab == 'updates' and not is_important:
+    if tab in ('updates', 'forums') and not is_important:
         rare = _is_rare_sender(sender, frequency_index or {})
         engaged = not _is_low_engagement(sender, engagement_index)
         if not rare and not engaged:
