@@ -1,227 +1,130 @@
 """
 The Agenda — CLI
-Pulls tasks from formal.db, scores them with the priority engine, prints a ranked list.
+Reads open tasks and events from the items pool, scores them with the Priority Engine,
+and prints a ranked list.
 
-Run: python main.py
-     python main.py --all        (include done/dismissed)
-     python main.py --grades     (show current grade snapshot)
+Run: python apps/agenda/main.py
+     python apps/agenda/main.py --all        (include done/archived)
+     python apps/agenda/main.py --done ID    (mark an item done)
 """
 
 import sys
+import json
 import argparse
 from pathlib import Path
-from datetime import date, datetime
-from typing import Optional
+from datetime import date, datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.db import get_db, init_db
-from core.profile import (
-    get_current_term,
-    load_profile,
-    normalize_category_name,
-    source_periods_for_term,
-)
+from core.items import Item, ItemRepository
+from core.priority import score_item
 
-# ──────────────────────────────────────────────
-# PRIORITY ENGINE
-# ──────────────────────────────────────────────
+TIER_LABEL = {"S": "S", "A": "A", "B": "B", "C": "C", "D": "D"}
 
-def compute_priority(
-    category,
-    points_possible,
-    current_grade,
-    cat_points_so_far,
-    due_date_str,
-    course_name=None,
-    profile=None,
-):
-    profile = profile or load_profile()
-    grading = profile["grading"]
-    category = normalize_category_name(category)
-    category_config = profile.get("categories", {}).get(category, {})
-    course_config = profile.get("courses", {}).get(course_name, {}) if course_name else {}
-    course_weights = {
-        normalize_category_name(name): weight
-        for name, weight in course_config.get("category_weights", {}).items()
-    }
-    today = date.today()
-    wc    = course_weights.get(category, category_config.get("weight", 0.20))
-    total = cat_points_so_far + points_possible
-    i_val = points_possible / total if total > 0 else 1.0
-    r_val = max(0.0, (grading["target_grade"] - current_grade) / 100)
+W = 80
 
-    if due_date_str:
-        try:
-            due = datetime.strptime(due_date_str, "%Y-%m-%d").date()
-            days_left = (due - today).days
-        except ValueError:
-            days_left = grading.get("lookahead_days", 14)
+
+def _load_open_items(repo, show_all=False):
+    """Load items from the pool and score them."""
+    if show_all:
+        rows = repo.list_items(status=None, limit=200)
     else:
-        days_left = grading.get("lookahead_days", 14)
+        rows = repo.list_items(status="open", limit=200)
 
-    lookahead_days = grading.get("lookahead_days", 14)
-    u_val = max(0.0, min(1.0, 1 - (days_left / lookahead_days)))
-    v_val = category_config.get("volatility", 0.0)
-    p     = max(0.0, min(1.0, wc * i_val * r_val * u_val * (1 + v_val)))
-    return p, days_left, round(i_val * 100, 1)
-
-
-def get_tier(p):
-    if p >= 0.025: return "S"
-    if p >= 0.015: return "A"
-    if p >= 0.008: return "B"
-    if p >= 0.003: return "C"
-    return "D"
-
-
-TIER_LABEL = {"S": "🔥 S", "A": "⚠️  A", "B": "📌 B", "C": "🧱 C", "D": "💤 D"}
-
-# ──────────────────────────────────────────────
-# DB HELPERS
-# ──────────────────────────────────────────────
-
-def latest_grade(conn, course, term, source_periods):
-    for source_period in reversed(source_periods):
-        row = conn.execute(
-            """SELECT numeric_grade FROM grades
-               WHERE course = ? AND term = ? AND source_period = ?
-               ORDER BY scraped_at DESC LIMIT 1""",
-            (course, term, source_period),
-        ).fetchone()
-        if row and row["numeric_grade"] is not None:
-            return row["numeric_grade"]
-    return 85.0
-
-
-def cat_points(conn, course, category, term):
-    rows = conn.execute(
-        """SELECT category, SUM(possible) AS total FROM assignments
-           WHERE course = ? AND term = ? AND possible IS NOT NULL
-             AND scraped_at = (
-                 SELECT MAX(scraped_at) FROM assignments WHERE course = ? AND term = ?
-             )
-           GROUP BY category""",
-        (course, term, course, term),
-    ).fetchall()
-    canonical_category = normalize_category_name(category)
-    return sum(
-        row["total"] or 0.0
-        for row in rows
-        if normalize_category_name(row["category"] or "") == canonical_category
-    )
-
-
-# ──────────────────────────────────────────────
-# VIEWS
-# ──────────────────────────────────────────────
-
-def print_tasks(show_all=False):
-    profile = load_profile()
-    term = get_current_term(profile)["name"]
-    source_periods = source_periods_for_term(term, profile)
-    init_db()
-    conn = get_db()
-
-    query = "SELECT * FROM tasks"
-    if not show_all:
-        query += " WHERE status = 'pending'"
-
-    rows = conn.execute(query).fetchall()
-
-    if not rows:
-        print("No tasks found. Run the scrapers first, or add tasks manually via the DB.")
-        conn.close()
-        return
+    # Only tasks and events for the agenda
+    rows = [r for r in rows if r["item_type"] in ("task", "event")]
 
     scored = []
-    for row in rows:
-        task     = dict(row)
-        course   = task.get("course") or ""
-        category = task.get("category") or "Homework"
-        points   = task.get("possible_points") or 100.0
-        grade    = latest_grade(conn, course, term, source_periods) if course else 85.0
-        cp       = cat_points(conn, course, category, term) if course else 0.0
-
-        p, days_left, impact = compute_priority(
-            category, points, grade, cp, task.get("due_date"), course, profile
+    for r in rows:
+        item = Item(
+            id=r["id"], source=r["source"], source_item_id=r["source_item_id"],
+            item_type=r["item_type"], title=r["title"], description=r["description"],
+            due_at=r["due_at"], importance=r["importance"],
+            effort_minutes=r["effort_minutes"], consequence=r["consequence"],
+            status=r["status"], raw_payload=r["raw_payload"],
+            created_at=r["created_at"], updated_at=r["updated_at"],
         )
-        task["priority"] = p
-        task["tier"]     = get_tier(p)
-        task["days_left"] = days_left
-        task["impact"]   = impact
-        scored.append(task)
+        result = score_item(item)
+        scored.append((item, result))
 
-    conn.close()
-    scored.sort(key=lambda t: t["priority"], reverse=True)
-
-    print()
-    print("=" * 85)
-    print(f"  THE AGENDA — {date.today()}   |   Target: {profile['grading']['target_grade']}%   |   Lookahead: {profile['grading'].get('lookahead_days', 14)}d")
-    print("=" * 85)
-    print(f"  {'TIER':<6}  {'SCORE':>7}  {'DAYS':>4}  {'SOURCE':<10}  {'COURSE':<22}  TASK")
-    print("-" * 85)
-
-    for t in scored:
-        days_str = str(t["days_left"]) if t["days_left"] >= 0 else "LATE"
-        tier_str = TIER_LABEL.get(t["tier"], t["tier"])
-        status   = f" [{t['status']}]" if t["status"] != "pending" else ""
-        print(
-            f"  {tier_str:<7}  {t['priority']:>7.4f}  {days_str:>4}  "
-            f"{(t.get('source') or ''):<10}  {(t.get('course') or '')[:22]:<22}  "
-            f"{t.get('title','')}{status}"
-        )
-
-    print("-" * 85)
-    print(f"  {len(scored)} task(s)   Legend: S=Critical  A=High  B=Medium  C=Low  D=Minimal")
-    print("=" * 85)
-    print()
+    scored.sort(key=lambda x: -x[1]["score"])
+    return scored
 
 
-def print_grades():
+def print_agenda(show_all=False):
     init_db()
-    conn = get_db()
+    repo = ItemRepository()
+    scored = _load_open_items(repo, show_all)
+    repo.close()
 
-    rows = conn.execute(
-        """SELECT g.course, g.course_type, g.letter_grade, g.numeric_grade,
-                  g.term, g.source_period, g.scraped_at
-           FROM grades g
-           INNER JOIN (
-               SELECT course, source_period, MAX(scraped_at) AS latest
-               FROM grades
-               GROUP BY course, source_period
-           ) l ON g.course = l.course AND g.source_period = l.source_period
-              AND g.scraped_at = l.latest
-           ORDER BY g.numeric_grade DESC"""
-    ).fetchall()
-    conn.close()
-
-    if not rows:
-        print("No grade data found. Run the PowerSchool scraper first.")
+    if not scored:
+        print("  No items. Run the Gmail scraper first.")
         return
 
     print()
-    print("=" * 55)
-    print(f"  GRADE SNAPSHOT — {date.today()}")
-    print("=" * 55)
-    print(f"  {'COURSE':<30}  {'TYPE':<8}  {'TERM':<16}  {'PERIOD':<8}  {'GRADE'}")
-    print("-" * 78)
-    for r in rows:
-        print(f"  {r['course'][:30]:<30}  {(r['course_type'] or ''):<8}  {(r['term'] or ''):<16}  {(r['source_period'] or ''):<8}  {r['letter_grade']} ({r['numeric_grade']}%)")
-    print("=" * 55)
+    print("=" * W)
+    print(f"  THE AGENDA — {date.today()}")
+    print("=" * W)
+    print(f"  {'#':>3}  {'TIER':<4}  {'SCORE':>5}  {'DUE':<12}  {'TYPE':<6}  TITLE")
+    print("  " + "-" * (W - 2))
+
+    for i, (item, res) in enumerate(scored, 1):
+        due = (item.due_at or "")[:10] or "-"
+        tier = TIER_LABEL[res["tier"]]
+        score = f"{res['score']:.2f}"
+        itype = item.item_type[:6]
+        title = item.title[:45]
+        status_tag = f" [{item.status}]" if item.status != "open" else ""
+        print(f"  {i:>3}  [{tier}]  {score:>5}  {due:<12}  {itype:<6}  {title}{status_tag}")
+
+    print("  " + "-" * (W - 2))
+    print(f"  {len(scored)} item(s)   S=Critical  A=High  B=Medium  C=Low  D=Minimal")
+    print("=" * W)
     print()
 
 
-# ──────────────────────────────────────────────
-# ENTRY POINT
-# ──────────────────────────────────────────────
+def mark_done(item_id):
+    init_db()
+    conn = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with conn:
+        cursor = conn.execute(
+            "UPDATE items SET status = 'done', updated_at = ? WHERE id = ?",
+            (now, item_id),
+        )
+    if cursor.rowcount:
+        print(f"  Done: {item_id}")
+    else:
+        # Try matching by row number prefix
+        rows = conn.execute(
+            "SELECT id, title FROM items WHERE status = 'open' AND item_type IN ('task', 'event')"
+        ).fetchall()
+        if item_id.isdigit():
+            idx = int(item_id) - 1
+            repo = ItemRepository(connection=conn)
+            scored = _load_open_items(repo, show_all=False)
+            if 0 <= idx < len(scored):
+                real_id = scored[idx][0].id
+                with conn:
+                    conn.execute(
+                        "UPDATE items SET status = 'done', updated_at = ? WHERE id = ?",
+                        (now, real_id),
+                    )
+                print(f"  Done: {scored[idx][0].title[:60]}")
+            else:
+                print(f"  Item #{item_id} not found.")
+        else:
+            print(f"  Item {item_id} not found.")
+    conn.close()
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="The Agenda — priority task list")
-    parser.add_argument("--all",    action="store_true", help="Include done/dismissed tasks")
-    parser.add_argument("--grades", action="store_true", help="Show current grade snapshot")
+    parser = argparse.ArgumentParser(description="The Agenda — ranked task list from the items pool")
+    parser.add_argument("--all", action="store_true", help="Include done/archived items")
+    parser.add_argument("--done", metavar="ID", help="Mark an item done (by ID or row number)")
     args = parser.parse_args()
 
-    if args.grades:
-        print_grades()
+    if args.done:
+        mark_done(args.done)
     else:
-        print_tasks(show_all=args.all)
+        print_agenda(show_all=args.all)
