@@ -113,5 +113,51 @@ class TestScoreAndTier(unittest.TestCase):
             self.assertIn(key, result["reasons"])
 
 
+class TestImminentDeadlineFloor(unittest.TestCase):
+    def test_due_tomorrow_low_consequence_at_least_b_tier(self):
+        item = _item(importance=2, consequence=1, due_at=_due(0.5))
+        result = score_item(item)
+        self.assertGreaterEqual(result["score"], 0.40)
+        self.assertIn(result["tier"], ("S", "A", "B"))
+
+    def test_overdue_low_consequence_at_least_b_tier(self):
+        item = _item(importance=1, consequence=1, due_at=_due(-1))
+        result = score_item(item)
+        self.assertGreaterEqual(result["score"], 0.50)
+
+    def test_due_in_7_days_no_floor(self):
+        item = _item(importance=1, consequence=1, due_at=_due(7))
+        result = score_item(item)
+        self.assertLess(result["score"], 0.40)
+        self.assertFalse(result["reasons"]["imminent_floor"])
+
+    def test_due_tomorrow_c1_outranks_no_date_c2(self):
+        tomorrow = _item(importance=2, consequence=1, due_at=_due(0.5))
+        no_date = _item(importance=3, consequence=2, due_at=None)
+        self.assertGreater(score_item(tomorrow)["score"], score_item(no_date)["score"])
+
+    def test_imminent_floor_flag_set(self):
+        item = _item(importance=1, consequence=1, due_at=_due(0.5))
+        result = score_item(item)
+        self.assertTrue(result["reasons"]["imminent_floor"])
+
+
+class TestEventBoost(unittest.TestCase):
+    def test_event_scores_higher_than_task_same_stats(self):
+        event = _item(item_type="event", importance=3, consequence=2, due_at=_due(3))
+        task = _item(item_type="task", importance=3, consequence=2, due_at=_due(3))
+        self.assertGreater(score_item(event)["score"], score_item(task)["score"])
+
+    def test_event_boost_flag_set(self):
+        event = _item(item_type="event", importance=3, consequence=2, due_at=_due(3))
+        result = score_item(event)
+        self.assertTrue(result["reasons"]["event_boost"])
+
+    def test_no_boost_for_undated_event(self):
+        event = _item(item_type="event", importance=3, consequence=2, due_at=None)
+        result = score_item(event)
+        self.assertFalse(result["reasons"]["event_boost"])
+
+
 if __name__ == "__main__":
     unittest.main()

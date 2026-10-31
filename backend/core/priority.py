@@ -97,6 +97,12 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
     if item.due_at is None and is_important:
         urgency_factor = max(urgency_factor, 0.55)
 
+    # Events have fixed times — you can't defer attendance.
+    event_boost = False
+    if item.item_type == "event" and item.due_at is not None:
+        event_boost = True
+        urgency_factor = min(urgency_factor + 0.10, 1.0)
+
     if item.effort_minutes is not None:
         effort_norm = min(item.effort_minutes / EFFORT_CAP_MINUTES, 1.0)
         effort_norm = max(effort_norm, EFFORT_FLOOR)
@@ -115,6 +121,23 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
     if urgency_context == 'available_window' and item.due_at is None:
         raw = max(raw, consequence_norm)
 
+    # Imminent deadline floor: anything due within 24 hours is at least B tier.
+    # You can revisit a low-priority item, but you can't un-miss a deadline.
+    imminent_floor = False
+    if item.due_at is not None:
+        due = datetime.fromisoformat(item.due_at.replace("Z", "+00:00"))
+        if due.tzinfo is None:
+            due = due.replace(tzinfo=timezone.utc)
+        days_left = (due - now).total_seconds() / 86400.0
+        if days_left <= 1 and days_left > 0:
+            if raw < 0.40:
+                imminent_floor = True
+            raw = max(raw, 0.40)
+        elif days_left <= 0:
+            if raw < 0.50:
+                imminent_floor = True
+            raw = max(raw, 0.50)
+
     score = round(min(max(raw, 0.0), 1.0), 4)
 
     reasons: dict = {
@@ -129,6 +152,8 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
         "urgency_context": urgency_context,
         "urgency_factor": round(urgency_factor, 4),
         "is_important_boost": is_important and item.due_at is None,
+        "event_boost": event_boost,
+        "imminent_floor": imminent_floor,
         "raw": round(raw, 4),
     }
 
