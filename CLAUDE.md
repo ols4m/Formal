@@ -87,6 +87,7 @@ Do NOT start: Calendar integration, Checkbook, Receipt, Utilizer, other jots app
 - Ask first before: rewriting git history, breaking schema changes, adding dependencies or services, or touching the paused gradebook code.
 - Never hardcode personal or school details. Put them in the profile.
 - Prefer small, reviewable diffs. Explain decisions in 2-3 lines, then give the commands.
+- Never co-author commits with Claude. No `Co-Authored-By` lines in commit messages.
 
 ## 11. Suggested first session
 1. Read the files listed at the top and summarize the current state back in under 15 lines.

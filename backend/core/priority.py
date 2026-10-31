@@ -108,6 +108,13 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
         effort_label = "unknown"
 
     raw = importance_norm * urgency_factor * value
+
+    # available_window items (FAFSA, enrollment, scholarships) must never be buried
+    # by the absence of a deadline. Floor the score at consequence_norm so a
+    # consequence=5 item always reaches S tier regardless of urgency.
+    if urgency_context == 'available_window' and item.due_at is None:
+        raw = max(raw, consequence_norm)
+
     score = round(min(max(raw, 0.0), 1.0), 4)
 
     reasons: dict = {
