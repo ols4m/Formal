@@ -440,25 +440,28 @@ Step 2 — Pick the specific category:
 
   ACTION categories:
     task        — deliberate action still possible: reply, submit form, confirm charge, RSVP, pay bill
-    event       — scheduled event the user is invited to: meeting, appointment, webinar, call
-    opportunity — optional but worth considering: scholarship, survey, focus group, challenge, internship
+    event       — scheduled event the user is invited to: meeting, appointment, webinar, call, info session, reception, clinic, festival
+    opportunity — optional but worth considering: scholarship, survey, focus group, challenge, internship, career fair, program, professional development
 
   DATA categories:
     financial   — financial activity or info: purchase receipt, payment, statement, refund, charge, disbursement
-    logistics   — shipment/delivery status with no response needed: tracking update, delivery confirmation
+    logistics   — status updates with no response needed: tracking, delivery, system maintenance, outage resolved
     identity    — account/security events already done: OTP, verification code, login alert, password reset, account change
     academic    — academic data from any platform: grade posted, assignment notification, course announcement, LMS reminder
-    social      — community/social info: alumni update, club digest, event recap, newsletter
+    social      — community/social info: alumni update, club digest, event recap, newsletter, policy announcement, awareness campaign
 
-  noise         — zero personal signal: pure promotional ads, spam
+  noise         — ONLY mass marketing with zero specific information: promotional ads, engagement bait, spam. Institutional announcements are NOT noise.
 
 Rules:
   - If the action already happened and nothing is left to do → DATA, not action
-  - "Invitation:" subject → event (action)
+  - "Invitation:", "You're Invited", "Reception", "Info Session" → event (action)
+  - Registration, enrollment, schedule available, add/drop → task with urgency_context: available_window
+  - System maintenance, outage, "RESOLVED", "COMPLETE", "restored" → logistics (data)
   - OTP/verification code → identity (data) — expires in minutes, useless by review time
   - Assignment/grade notification from LMS → academic (data) — LMS is the source of truth for the action
   - Shipping/delivery update → logistics (data)
   - ★ IMPORTANT emails: classify carefully, almost never noise
+  - Institutional announcements (from .edu, organizations, employers) → classify by CONTENT, never noise
 
 Return: {{"category": "task|event|opportunity|financial|academic|logistics|identity|social|noise", "intent": "action|data|noise", "confidence": 0.0-1.0, "consequence": 1-5, "urgency_context": "available_window|hard_deadline|evergreen", "summary": "one sentence what the user must do, or null for data/noise", "deadline": "specific date if mentioned or null"}}
 

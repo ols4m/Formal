@@ -44,6 +44,21 @@ _DELIVERED_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Completed/resolved status — action already done, nothing left to do
+_COMPLETED_RE = re.compile(
+    r"\b(complete[d]?|resolved|restored|has been fixed|is back|back to normal|"
+    r"back online|issue.{0,20}resolved|service.{0,20}restored)\b",
+    re.IGNORECASE,
+)
+
+# System status updates — informational, no user action needed
+_STATUS_UPDATE_RE = re.compile(
+    r"\b(currently unavailable|system(s)? (maintenance|outage|downtime)|"
+    r"service disruption|systems? availability|"
+    r"(scheduled|planned) (maintenance|downtime|outage))\b",
+    re.IGNORECASE,
+)
+
 # Pure confirmations — nothing to do (flexible word order)
 _CONFIRMATION_RE = re.compile(
     r"\b(thank you for (registering|your|signing|completing|submitting|participating)|"
@@ -272,6 +287,14 @@ def _record_type(emails: list[dict], category: str) -> str | None:
     # Identity — account changes already completed, security confirmations
     if _CONFIRMATION_RE.search(combined_all):
         return "identity"
+
+    # Completed/resolved actions — subject says it's done
+    if _COMPLETED_RE.search(combined_subject):
+        return "logistics"
+
+    # System status updates — no user action needed
+    if _STATUS_UPDATE_RE.search(combined_all) and not requires_response:
+        return "logistics"
 
     # All informational transactions — any Groq "transaction" with no response needed
     if category == "transaction" and not requires_response:
