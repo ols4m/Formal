@@ -14,7 +14,8 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -128,6 +129,183 @@ def extract_action_items(body: str) -> list[str]:
 
 _AUTO_NOISE_TABS = {'promotions', 'social', 'forums'}
 
+# Subject-line signals that indicate an action even on transactional (no List-Unsubscribe) emails.
+# Prevents the record shortcut from swallowing actionable emails.
+_SUBJECT_ACTION_RE = re.compile(
+    r'(?:action\s+(?:required|needed|advised)'
+    r'|confirm\s+(?:your|the|a)'
+    r'|(?:please|kindly)\s+(?:confirm|verify|reply|respond|review|sign|submit|complete)'
+    r'|pending\s+(?:request|action|review)'
+    r'|reminder:'
+    r'|new message from'
+    r'|\[(?:action|due|reminder))',
+    re.IGNORECASE
+)
+
+# ── Engagement index ──────────────────────────────────────────────────────────
+
+_ENGAGEMENT_CACHE_PATH = Path('output/engagement_cache.json')
+_ENGAGEMENT_TTL_HOURS  = 24
+
+
+def _sender_domain(address: str) -> str:
+    """Extract the domain from a From: address like 'Name <user@domain.com>'."""
+    m = re.search(r'@([\w.\-]+)', address)
+    return m.group(1).lower() if m else address.lower().strip()
+
+
+def build_engagement_index(service) -> dict:
+    """
+    Build a sender-domain engagement signal from Gmail history.
+
+    Returns a dict:
+      {
+        'replied_domains':  set of domains the user has sent mail to,
+        'opened_domains':   {domain: open_count} for inbox messages not from self,
+        'built_at':         ISO timestamp,
+      }
+
+    Cached to disk for _ENGAGEMENT_TTL_HOURS hours so it's not rebuilt every run.
+    """
+    os.makedirs('output', exist_ok=True)
+
+    # Return cached index if fresh
+    if _ENGAGEMENT_CACHE_PATH.exists():
+        try:
+            cached = json.loads(_ENGAGEMENT_CACHE_PATH.read_text())
+            built  = datetime.fromisoformat(cached['built_at'])
+            if datetime.now(timezone.utc) - built < timedelta(hours=_ENGAGEMENT_TTL_HOURS):
+                cached['replied_domains'] = set(cached['replied_domains'])
+                cached['opened_domains']  = defaultdict(int, cached['opened_domains'])
+                return cached
+        except Exception:
+            pass
+
+    print('  Building engagement index from Gmail history...')
+
+    replied_domains: set              = set()
+    opened_domains:  defaultdict[str, int] = defaultdict(int)
+
+    # ── Signal 1: domains you've replied to (sent mail) ──────────────────────
+    try:
+        sent_results = service.users().messages().list(
+            userId='me', q='in:sent', maxResults=500
+        ).execute()
+        for msg in sent_results.get('messages', []):
+            try:
+                meta = service.users().messages().get(
+                    userId='me', id=msg['id'], format='metadata',
+                    metadataHeaders=['To']
+                ).execute()
+                to_header = next(
+                    (h['value'] for h in meta['payload']['headers'] if h['name'] == 'To'),
+                    ''
+                )
+                for addr in to_header.split(','):
+                    d = _sender_domain(addr.strip())
+                    if d:
+                        replied_domains.add(d)
+            except Exception:
+                continue
+    except Exception as e:
+        print(f'  ⚠️  Could not fetch sent mail: {e}')
+
+    # ── Signal 2: inbox open proxy — messages kept in INBOX by sender domain ──
+    # Heuristic: if a message is in INBOX (and not a bulk tab) it was at minimum
+    # seen and not immediately archived/trashed — a weak "opened" signal.
+    # Exclude promotions/social/forums so opening a Facebook digest to investigate
+    # doesn't accidentally credit facebookmail.com.
+    _bulk_exclusion = ' '.join(f'-category:{t}' for t in _AUTO_NOISE_TABS)
+    try:
+        inbox_results = service.users().messages().list(
+            userId='me', q=f'in:inbox {_bulk_exclusion}', maxResults=500
+        ).execute()
+        for msg in inbox_results.get('messages', []):
+            try:
+                meta = service.users().messages().get(
+                    userId='me', id=msg['id'], format='metadata',
+                    metadataHeaders=['From']
+                ).execute()
+                from_header = next(
+                    (h['value'] for h in meta['payload']['headers'] if h['name'] == 'From'),
+                    ''
+                )
+                d = _sender_domain(from_header)
+                if d:
+                    opened_domains[d] += 1
+            except Exception:
+                continue
+    except Exception as e:
+        print(f'  ⚠️  Could not fetch inbox history: {e}')
+
+    index = {
+        'replied_domains': list(replied_domains),
+        'opened_domains':  dict(opened_domains),
+        'built_at':        datetime.now(timezone.utc).isoformat(),
+    }
+    _ENGAGEMENT_CACHE_PATH.write_text(json.dumps(index, indent=2))
+    print(f'  Engagement index: {len(replied_domains)} reply domains, '
+          f'{len(opened_domains)} inbox domains cached.')
+
+    index['replied_domains'] = replied_domains
+    index['opened_domains']  = defaultdict(int, opened_domains)
+    return index
+
+
+def _is_low_engagement(sender: str, index: dict | None) -> bool:
+    """
+    Return True if the sender's domain shows no behavioral engagement signal.
+
+    High engagement (returns False — let it through):
+      - User has ever replied to this domain (strong signal)
+      - User has kept ≥2 messages from this domain in inbox (moderate signal)
+
+    Low engagement (returns True — candidate for auto-noise):
+      - No replies AND fewer than 2 inbox appearances
+    """
+    if index is None:
+        return False  # no data → don't suppress
+
+    domain = _sender_domain(sender)
+    if not domain:
+        return False
+
+    if domain in index.get('replied_domains', set()):
+        return False
+
+    opened = index.get('opened_domains', {})
+    if opened.get(domain, 0) >= 2:
+        return False
+
+    return True
+
+
+# ── Sender frequency index ────────────────────────────────────────────────────
+
+_FREQUENCY_THRESHOLD = 2  # domains with ≤ this many emails in history are "rare"
+
+
+def _build_frequency_index(history_path: str = 'output/emails_history.json') -> dict[str, int]:
+    """Count emails per sender domain from local history. No API calls."""
+    counts: dict[str, int] = defaultdict(int)
+    try:
+        with open(history_path, encoding='utf-8') as f:
+            history = json.load(f)
+        for email in history.get('emails', []):
+            d = _sender_domain(email.get('from', ''))
+            if d:
+                counts[d] += 1
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return dict(counts)
+
+
+def _is_rare_sender(sender: str, frequency_index: dict[str, int]) -> bool:
+    """Return True if the sender domain has appeared ≤ _FREQUENCY_THRESHOLD times in history."""
+    domain = _sender_domain(sender)
+    return frequency_index.get(domain, 0) <= _FREQUENCY_THRESHOLD
+
+
 VALID_CATEGORIES = {
     # action
     'task', 'event', 'opportunity',
@@ -140,7 +318,7 @@ VALID_CATEGORIES = {
 }
 
 
-def _make_noise(email: dict) -> dict:
+def _make_noise(email: dict, stage: str = 'tab_noise') -> dict:
     return {
         **email,
         'category': 'noise', 'intent': 'noise', 'confidence': 0.95,
@@ -148,6 +326,24 @@ def _make_noise(email: dict) -> dict:
         'summary': None, 'deadline': None,
         'financial_impact': False, 'amounts': [], 'merchant': None,
         'action_items': [], 'routes_to': [],
+        '_filter_stage': stage,
+    }
+
+
+def _make_record(email: dict) -> dict:
+    """Build a classification dict for a personal record that bypasses Groq."""
+    body = email.get('body', '')
+    full = email.get('subject', '') + ' ' + body
+    return {
+        **email,
+        'category': 'identity', 'intent': 'data', 'confidence': 1.0,
+        'consequence': 3, 'urgency_context': 'evergreen',
+        'summary': None, 'deadline': None,
+        'financial_impact': bool(_FINANCIAL_PATTERN.search(full)),
+        'amounts': extract_amounts(full),
+        'merchant': extract_merchant(full),
+        'action_items': [], 'routes_to': [],
+        '_filter_stage': 'record',
     }
 
 
@@ -170,20 +366,45 @@ def _make_result(email: dict, category: str, intent: str, confidence: float,
         'merchant':        extract_merchant(full) if category == 'financial' else None,
         'action_items':    extract_action_items(body),
         'routes_to':       ROUTES.get(category, []),
+        '_filter_stage':   'groq',
     }
 
 
-def _classify_one(email: dict, client) -> dict:
-    """Classify a single email with Groq. Returns a fully populated result dict."""
-    tab          = email.get('gmail_tab', 'unknown')
-    is_important = email.get('is_important', False)
-    subject      = email.get('subject', '')
-    sender       = email.get('from', '')
-    body         = (email.get('body') or '')[:1500]
+def _classify_one(email: dict, client,
+                   engagement_index: dict | None = None,
+                   frequency_index: dict[str, int] | None = None) -> dict:
+    """Classify a single email through the filter pipeline.
 
-    # Fast path: non-important promotions/social are noise without an LLM call
-    if tab in _AUTO_NOISE_TABS and not is_important:
-        return _make_noise(email)
+    Pipeline (first match wins):
+      1. Tab auto-noise   — promotions/social/forums → dropped
+      2. No List-Unsubscribe → personal record → items pool (skip Groq)
+      3. Updates gate      — is_important=False + high-freq + low-engagement → dropped
+      4. Everything else   → Groq classifier
+    """
+    tab     = email.get('gmail_tab', 'unknown')
+    subject = email.get('subject', '')
+    sender  = email.get('from', '')
+    body    = (email.get('body') or '')[:1500]
+
+    # ── 1. Tab auto-noise: promotions/social/forums ──────────────────────────
+    if tab in _AUTO_NOISE_TABS:
+        return _make_noise(email, stage='tab_noise')
+
+    # ── 2. No List-Unsubscribe → 1:1 personal record (skip Groq) ────────────
+    # CAN-SPAM requires bulk senders to include this header. Its absence means
+    # a transactional/personal email: receipts, security alerts, account events.
+    # Default True for backward compat with older emails missing the field.
+    has_unsub = email.get('has_list_unsubscribe', True)
+    if not has_unsub and not _SUBJECT_ACTION_RE.search(subject):
+        return _make_record(email)
+
+    # ── 3. Updates gate: behavioral signals for mass-sent updates ────────────
+    is_important = email.get('is_important', False)
+    if tab == 'updates' and not is_important:
+        rare = _is_rare_sender(sender, frequency_index or {})
+        engaged = not _is_low_engagement(sender, engagement_index)
+        if not rare and not engaged:
+            return _make_noise(email, stage='updates_noise')
 
     importance_line = (
         "★ IMPORTANT — Gmail flagged this as significant based on the user's own email behavior."
@@ -191,11 +412,19 @@ def _classify_one(email: dict, client) -> dict:
         "normal (Gmail did not flag as important)"
     )
 
+    engaged = not _is_low_engagement(sender, engagement_index)
+    engagement_line = (
+        "yes — user has replied to or repeatedly opened mail from this sender domain"
+        if engaged else
+        "no — sender domain has no reply or open history"
+    )
+
     prompt = f"""You are classifying one email for a personal life OS. Return ONLY a JSON object — no markdown, no extra text.
 
 Gmail signals:
   importance: {importance_line}
   tab: {tab}
+  engagement: {engagement_line}
 
 Email:
   From: {sender[:80]}
@@ -290,12 +519,32 @@ urgency_context — time pressure independent of whether a date is mentioned:
     return _make_result(email, 'noise', 'noise', 0.0, 1, 'evergreen', None, None)
 
 
-def classify_emails(emails: list[dict]) -> list[dict]:
-    """Classify all emails. Groq is the primary classifier; tab+importance filter obvious noise."""
+def classify_emails(emails: list[dict], gmail_service=None) -> list[dict]:
+    """Classify all emails through the filter pipeline.
+
+    Pipeline order:
+      1. Tab auto-noise (promotions/social/forums)
+      2. No List-Unsubscribe → personal record (skip Groq)
+      3. Updates gate (frequency + engagement)
+      4. Everything else → Groq
+
+    gmail_service: authenticated Gmail API service object. When provided, the
+    engagement index is built (or loaded from cache) to gate the updates tab.
+    """
     api_key = os.getenv('GROQ_API_KEY', '')
     if not api_key:
         print('  ⚠️  GROQ_API_KEY not set — all emails marked other.')
         return [_make_result(e, 'other', 'noise', 0.0, 1, 'evergreen', None, None) for e in emails]
+
+    # Build behavioral indexes once
+    engagement_index = None
+    if gmail_service is not None:
+        try:
+            engagement_index = build_engagement_index(gmail_service)
+        except Exception as e:
+            print(f'  ⚠️  Engagement index failed, updates tab will pass through: {e}')
+
+    frequency_index = _build_frequency_index()
 
     from groq import Groq
     client  = Groq(api_key=api_key)
@@ -304,7 +553,14 @@ def classify_emails(emails: list[dict]) -> list[dict]:
     for i, email in enumerate(emails, 1):
         if i % 10 == 0 or i == len(emails):
             print(f'  Classifying {i}/{len(emails)}...')
-        results.append(_classify_one(email, client))
+        results.append(_classify_one(email, client, engagement_index, frequency_index))
+
+    # Pipeline summary
+    stages = defaultdict(int)
+    for r in results:
+        stages[r.get('_filter_stage', 'unknown')] += 1
+    parts = [f'{stages.get(s, 0)} {s}' for s in ('tab_noise', 'record', 'updates_noise', 'groq') if stages.get(s)]
+    print(f'  Pipeline: {len(results)} total → {" | ".join(parts)}')
 
     return results
 
@@ -374,8 +630,12 @@ async def scrape_school_gmail(page: Page, email: str, username: str, password: s
 # PERSONAL EMAIL — Gmail API backend
 # ==========================================
 
-def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> list:
-    """Fetch emails from personal Gmail via OAuth2 API."""
+def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> tuple[list, object | None]:
+    """Fetch emails from personal Gmail via OAuth2 API.
+
+    Returns (emails, service) so the caller can reuse the authenticated
+    service object for the engagement index without re-authenticating.
+    """
     try:
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
@@ -384,12 +644,12 @@ def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> list:
     except ImportError:
         print('⚠️  Google client libs not installed.')
         print('    pip install google-api-python-client google-auth-oauthlib')
-        return []
+        return [], None
 
     if not CREDS_PATH.exists():
         print(f'⚠️  {CREDS_PATH} not found.')
         print('    Download OAuth2 credentials from Google Cloud Console → save as credentials.json')
-        return []
+        return [], None
 
     creds = None
     if TOKEN_PATH.exists():
@@ -460,11 +720,12 @@ def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> list:
                 'source':     'personal',
                 'gmail_tab':  gmail_tab,
                 'is_important': 'IMPORTANT' in label_ids,
+                'has_list_unsubscribe': 'List-Unsubscribe' in headers,
             })
         except Exception:
             continue
 
-    return emails
+    return emails, service
 
 
 # ==========================================
@@ -543,7 +804,7 @@ async def main(creds: tuple = None, days: int = None):
     print('─' * 60)
     print('GMAIL — Personal Account (API)')
     print('─' * 60)
-    personal_emails = scrape_personal_gmail(max_results=max_emails, days=days)
+    personal_emails, gmail_service = scrape_personal_gmail(max_results=max_emails, days=days)
     print(f'  ✅ {len(personal_emails)} emails fetched.')
     all_emails.extend(personal_emails)
 
@@ -582,11 +843,28 @@ async def main(creds: tuple = None, days: int = None):
 
     category_counts = {}
 
-    results = classify_emails(all_emails)
+    results = classify_emails(all_emails, gmail_service=gmail_service)
     for r in results:
         route_to_db(r, r)
         cat = r['category']
         category_counts[cat] = category_counts.get(cat, 0) + 1
+
+    # ── Items pool ────────────────────────────────────────
+    try:
+        from apps.gmail.items_adapter import emails_to_items
+        from core.items import ItemRepository
+
+        pool_items = emails_to_items(results)
+        if pool_items:
+            init_db()
+            repo = ItemRepository()
+            repo.upsert(pool_items)
+            repo.close()
+            print(f'  📦 {len(pool_items)} items upserted to pool.')
+        else:
+            print('  📦 No items to upsert.')
+    except Exception as e:
+        print(f'  ⚠️  Items pool write failed: {e}')
 
     now_iso = datetime.now(timezone.utc).isoformat() + 'Z'
 

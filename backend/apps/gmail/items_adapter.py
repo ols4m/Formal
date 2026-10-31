@@ -348,6 +348,9 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
     category = _LEGACY_CATEGORY_MAP.get(category, category)
     if category is None:
         return None
+    # Important emails misclassified as noise → treat as task
+    if category == "noise" and any(e.get("is_important") for e in emails):
+        category = "task"
 
     # Primary router: trust Groq's data classification directly;
     # fall back to regex _record_type() for action-labeled emails that are actually data
@@ -437,8 +440,13 @@ def emails_to_items(emails: list[dict], source: str = "gmail_personal") -> list[
             e["category"] = "event"
             e["intent"]   = "action"
 
-    # Include action AND data categories — noise is the only discard
-    pooled = [e for e in emails if e.get("category") in ACTION_CATEGORIES | DATA_CATEGORIES]
+    # Include action AND data categories — noise is the only discard,
+    # UNLESS Gmail flagged it as important (Groq misclassification safety net).
+    pooled = [
+        e for e in emails
+        if e.get("category") in ACTION_CATEGORIES | DATA_CATEGORIES
+        or e.get("is_important")
+    ]
 
     groups: dict[str, list[dict]] = {}
     singletons: list[dict] = []
