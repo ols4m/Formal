@@ -855,14 +855,17 @@ async def main(creds: tuple = None, days: int = None):
         from core.items import ItemRepository
 
         pool_items = emails_to_items(results)
+        init_db()
+        repo = ItemRepository()
         if pool_items:
-            init_db()
-            repo = ItemRepository()
             repo.upsert(pool_items)
-            repo.close()
             print(f'  📦 {len(pool_items)} items upserted to pool.')
         else:
             print('  📦 No items to upsert.')
+        archived = repo.archive_past_events()
+        if archived:
+            print(f'  📁 {archived} past event(s) archived.')
+        repo.close()
     except Exception as e:
         print(f'  ⚠️  Items pool write failed: {e}')
 

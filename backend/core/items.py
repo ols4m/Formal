@@ -127,6 +127,18 @@ class ItemRepository:
                 )
         return len(items)
 
+    def archive_past_events(self, now: str | None = None) -> int:
+        """Archive open events whose due_at is in the past. Returns count archived."""
+        now = now or _utc_now()
+        with self._connection:
+            cursor = self._connection.execute(
+                """UPDATE items SET status = 'archived', updated_at = ?
+                   WHERE status = 'open' AND item_type = 'event'
+                   AND due_at IS NOT NULL AND due_at < ?""",
+                (now, now),
+            )
+        return cursor.rowcount
+
     def list_items(
         self,
         *,

@@ -262,5 +262,56 @@ class ItemsTests(unittest.IsolatedAsyncioTestCase):
                 repository.close()
 
 
+class ArchivePastEventsTests(unittest.TestCase):
+    def test_past_event_gets_archived(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "formal.db"
+            with patch.object(db, "DB_PATH", database_path):
+                db.init_db()
+                repo = ItemRepository()
+                repo.upsert([Item(
+                    source="test", item_type="event", title="Past event",
+                    due_at="2026-10-01T12:00:00Z",
+                )])
+                archived = repo.archive_past_events()
+                self.assertEqual(archived, 1)
+                items = repo.list_items(status="archived")
+                self.assertEqual(len(items), 1)
+                self.assertEqual(items[0]["title"], "Past event")
+                repo.close()
+
+    def test_future_event_stays_open(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "formal.db"
+            with patch.object(db, "DB_PATH", database_path):
+                db.init_db()
+                repo = ItemRepository()
+                repo.upsert([Item(
+                    source="test", item_type="event", title="Future event",
+                    due_at="2099-12-31T23:59:00Z",
+                )])
+                archived = repo.archive_past_events()
+                self.assertEqual(archived, 0)
+                items = repo.list_items(status="open")
+                self.assertEqual(len(items), 1)
+                repo.close()
+
+    def test_past_task_stays_open(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "formal.db"
+            with patch.object(db, "DB_PATH", database_path):
+                db.init_db()
+                repo = ItemRepository()
+                repo.upsert([Item(
+                    source="test", item_type="task", title="Overdue task",
+                    due_at="2026-10-01T12:00:00Z",
+                )])
+                archived = repo.archive_past_events()
+                self.assertEqual(archived, 0)
+                items = repo.list_items(status="open")
+                self.assertEqual(len(items), 1)
+                repo.close()
+
+
 if __name__ == "__main__":
     unittest.main()
