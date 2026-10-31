@@ -4,5 +4,6 @@ grades.json
 output/
 apps/gmail/credentials.json
 apps/gmail/token.json
+apps/gmail/token_school.json
 __pycache__/
 *.pyc

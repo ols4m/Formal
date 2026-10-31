@@ -29,10 +29,11 @@ os.makedirs('output', exist_ok=True)
 OUTPUT_PATH = 'output/emails.json'
 GMAIL_URL   = 'https://mail.google.com/'
 
-# Personal Gmail OAuth token/credentials (gitignored)
-TOKEN_PATH = Path(__file__).parent / 'token.json'
-CREDS_PATH = Path(__file__).parent / 'credentials.json'
-SCOPES     = ['https://www.googleapis.com/auth/gmail.readonly']
+# Gmail OAuth tokens/credentials (gitignored)
+TOKEN_PATH        = Path(__file__).parent / 'token.json'
+TOKEN_PATH_SCHOOL = Path(__file__).parent / 'token_school.json'
+CREDS_PATH        = Path(__file__).parent / 'credentials.json'
+SCOPES            = ['https://www.googleapis.com/auth/gmail.readonly']
 
 
 # ==========================================
@@ -630,8 +631,14 @@ async def scrape_school_gmail(page: Page, email: str, username: str, password: s
 # PERSONAL EMAIL — Gmail API backend
 # ==========================================
 
-def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> tuple[list, object | None]:
-    """Fetch emails from personal Gmail via OAuth2 API.
+def scrape_gmail_api(max_results: int = 200, days: int = 7,
+                     token_path: Path = TOKEN_PATH,
+                     source: str = 'personal') -> tuple[list, object | None]:
+    """Fetch emails from a Gmail account via OAuth2 API.
+
+    Args:
+        token_path: Path to the OAuth token file for this account.
+        source: Label for the email source ('personal' or 'school').
 
     Returns (emails, service) so the caller can reuse the authenticated
     service object for the engagement index without re-authenticating.
@@ -652,8 +659,8 @@ def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> tuple[list, 
         return [], None
 
     creds = None
-    if TOKEN_PATH.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+    if token_path.exists():
+        creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
@@ -670,7 +677,7 @@ def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> tuple[list, 
             redirect_response = input('  Paste redirect URL: ').strip()
             flow.fetch_token(authorization_response=redirect_response)
             creds = flow.credentials
-        with open(TOKEN_PATH, 'w') as f:
+        with open(token_path, 'w') as f:
             f.write(creds.to_json())
 
     service  = build('gmail', 'v1', credentials=creds)
@@ -717,7 +724,7 @@ def scrape_personal_gmail(max_results: int = 200, days: int = 7) -> tuple[list, 
                 'snippet':    full.get('snippet', ''),
                 'date':       date_str,
                 'body':       body[:2000],
-                'source':     'personal',
+                'source':     source,
                 'gmail_tab':  gmail_tab,
                 'is_important': 'IMPORTANT' in label_ids,
                 'has_list_unsubscribe': 'List-Unsubscribe' in headers,
@@ -784,29 +791,36 @@ async def main(creds: tuple = None, days: int = None):
 
     all_emails = []
 
-    # ── School email ───────────────────────────────────────
-    if email_arg:
-        print('─' * 60)
-        print('GMAIL — School Account (Playwright)')
-        print('─' * 60)
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page    = await (await browser.new_context()).new_page()
-            school_emails = await scrape_school_gmail(page, email_arg, username_arg, password_arg)
-            await browser.close()
-        print(f'  ✅ {len(school_emails)} emails fetched.')
-        all_emails.extend(school_emails)
-    else:
-        print('⏭️  School Gmail skipped (no credentials).')
+    gmail_service = None
 
     # ── Personal email ─────────────────────────────────────
     print()
     print('─' * 60)
     print('GMAIL — Personal Account (API)')
     print('─' * 60)
-    personal_emails, gmail_service = scrape_personal_gmail(max_results=max_emails, days=days)
+    personal_emails, gmail_service = scrape_gmail_api(
+        max_results=max_emails, days=days,
+        token_path=TOKEN_PATH, source='personal',
+    )
     print(f'  ✅ {len(personal_emails)} emails fetched.')
     all_emails.extend(personal_emails)
+
+    # ── School email ──────────────────────────────────────
+    if TOKEN_PATH_SCHOOL.exists() or not TOKEN_PATH.exists():
+        print()
+        print('─' * 60)
+        print('GMAIL — School Account (API)')
+        print('─' * 60)
+        school_emails, school_service = scrape_gmail_api(
+            max_results=max_emails, days=days,
+            token_path=TOKEN_PATH_SCHOOL, source='school',
+        )
+        print(f'  ✅ {len(school_emails)} emails fetched.')
+        all_emails.extend(school_emails)
+        if gmail_service is None:
+            gmail_service = school_service
+    else:
+        print('⏭️  School Gmail skipped (no token_school.json).')
 
     if not all_emails:
         print('⚠️  No emails fetched.')
