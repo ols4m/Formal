@@ -122,7 +122,8 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
         raw = max(raw, consequence_norm)
 
     # Imminent deadline floor: anything due within 24 hours is at least B tier.
-    # You can revisit a low-priority item, but you can't un-miss a deadline.
+    # Overdue items get a decaying floor — overdue by 1 day = 0.50, by 7+ days = no floor.
+    # You can't un-miss a deadline, but a month-old missed event shouldn't top the list.
     imminent_floor = False
     if item.due_at is not None:
         due = datetime.fromisoformat(item.due_at.replace("Z", "+00:00"))
@@ -134,9 +135,12 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
                 imminent_floor = True
             raw = max(raw, 0.40)
         elif days_left <= 0:
-            if raw < 0.50:
-                imminent_floor = True
-            raw = max(raw, 0.50)
+            days_overdue = abs(days_left)
+            if days_overdue <= 7:
+                overdue_floor = 0.50 - (days_overdue / 7) * 0.30  # 0.50 → 0.20 over 7 days
+                if raw < overdue_floor:
+                    imminent_floor = True
+                raw = max(raw, overdue_floor)
 
     score = round(min(max(raw, 0.0), 1.0), 4)
 

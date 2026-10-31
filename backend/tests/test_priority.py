@@ -120,10 +120,16 @@ class TestImminentDeadlineFloor(unittest.TestCase):
         self.assertGreaterEqual(result["score"], 0.40)
         self.assertIn(result["tier"], ("S", "A", "B"))
 
-    def test_overdue_low_consequence_at_least_b_tier(self):
+    def test_overdue_1_day_gets_floor(self):
         item = _item(importance=1, consequence=1, due_at=_due(-1))
         result = score_item(item)
-        self.assertGreaterEqual(result["score"], 0.50)
+        self.assertGreaterEqual(result["score"], 0.40)
+
+    def test_overdue_14_days_no_floor(self):
+        item = _item(importance=1, consequence=1, due_at=_due(-14))
+        result = score_item(item)
+        # No overdue floor after 7 days — natural score only
+        self.assertFalse(result["reasons"]["imminent_floor"])
 
     def test_due_in_7_days_no_floor(self):
         item = _item(importance=1, consequence=1, due_at=_due(7))
