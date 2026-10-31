@@ -1,7 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -262,7 +262,7 @@ class ItemsTests(unittest.IsolatedAsyncioTestCase):
                 repository.close()
 
 
-class ArchivePastEventsTests(unittest.TestCase):
+class ArchivePastItemsTests(unittest.TestCase):
     def test_past_event_gets_archived(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "formal.db"
@@ -273,7 +273,7 @@ class ArchivePastEventsTests(unittest.TestCase):
                     source="test", item_type="event", title="Past event",
                     due_at="2026-10-01T12:00:00Z",
                 )])
-                archived = repo.archive_past_events()
+                archived = repo.archive_past_items()
                 self.assertEqual(archived, 1)
                 items = repo.list_items(status="archived")
                 self.assertEqual(len(items), 1)
@@ -290,25 +290,42 @@ class ArchivePastEventsTests(unittest.TestCase):
                     source="test", item_type="event", title="Future event",
                     due_at="2099-12-31T23:59:00Z",
                 )])
-                archived = repo.archive_past_events()
+                archived = repo.archive_past_items()
                 self.assertEqual(archived, 0)
                 items = repo.list_items(status="open")
                 self.assertEqual(len(items), 1)
                 repo.close()
 
-    def test_past_task_stays_open(self):
+    def test_task_overdue_1_day_stays_open(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "formal.db"
+            with patch.object(db, "DB_PATH", database_path):
+                db.init_db()
+                repo = ItemRepository()
+                yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+                repo.upsert([Item(
+                    source="test", item_type="task", title="Recently overdue task",
+                    due_at=yesterday,
+                )])
+                archived = repo.archive_past_items()
+                self.assertEqual(archived, 0)
+                items = repo.list_items(status="open")
+                self.assertEqual(len(items), 1)
+                repo.close()
+
+    def test_task_overdue_14_days_gets_archived(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "formal.db"
             with patch.object(db, "DB_PATH", database_path):
                 db.init_db()
                 repo = ItemRepository()
                 repo.upsert([Item(
-                    source="test", item_type="task", title="Overdue task",
+                    source="test", item_type="task", title="Old overdue task",
                     due_at="2026-10-01T12:00:00Z",
                 )])
-                archived = repo.archive_past_events()
-                self.assertEqual(archived, 0)
-                items = repo.list_items(status="open")
+                archived = repo.archive_past_items()
+                self.assertEqual(archived, 1)
+                items = repo.list_items(status="archived")
                 self.assertEqual(len(items), 1)
                 repo.close()
 

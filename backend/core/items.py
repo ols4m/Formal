@@ -4,7 +4,7 @@ import json
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Protocol, Sequence
 
 from core.db import get_db, init_db
@@ -127,17 +127,34 @@ class ItemRepository:
                 )
         return len(items)
 
-    def archive_past_events(self, now: str | None = None) -> int:
-        """Archive open events whose due_at is in the past. Returns count archived."""
-        now = now or _utc_now()
+    def archive_past_items(self, now: str | None = None) -> int:
+        """Archive open items whose due_at is in the past.
+
+        Events: archived immediately when past (can't attend late).
+        Tasks: archived when overdue by more than 7 days (missed, not actionable).
+        """
+        now_str = now or _utc_now()
+        now_dt = datetime.fromisoformat(now_str.replace("Z", "+00:00"))
+        cutoff_7d = (now_dt - timedelta(days=7)).isoformat().replace("+00:00", "Z")
+        total = 0
         with self._connection:
-            cursor = self._connection.execute(
+            # Past events — archive immediately
+            c1 = self._connection.execute(
                 """UPDATE items SET status = 'archived', updated_at = ?
                    WHERE status = 'open' AND item_type = 'event'
                    AND due_at IS NOT NULL AND due_at < ?""",
-                (now, now),
+                (now_str, now_str),
             )
-        return cursor.rowcount
+            total += c1.rowcount
+            # Tasks overdue by 7+ days — no longer actionable
+            c2 = self._connection.execute(
+                """UPDATE items SET status = 'archived', updated_at = ?
+                   WHERE status = 'open' AND item_type = 'task'
+                   AND due_at IS NOT NULL AND due_at < ?""",
+                (now_str, cutoff_7d),
+            )
+            total += c2.rowcount
+        return total
 
     def list_items(
         self,

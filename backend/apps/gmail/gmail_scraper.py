@@ -879,9 +879,9 @@ async def main(creds: tuple = None, days: int = None):
             print(f'  📦 {len(pool_items)} items upserted to pool.')
         else:
             print('  📦 No items to upsert.')
-        archived = repo.archive_past_events()
+        archived = repo.archive_past_items()
         if archived:
-            print(f'  📁 {archived} past event(s) archived.')
+            print(f'  📁 {archived} past item(s) archived.')
         repo.close()
     except Exception as e:
         print(f'  ⚠️  Items pool write failed: {e}')
