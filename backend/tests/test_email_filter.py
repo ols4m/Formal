@@ -14,6 +14,7 @@ from apps.gmail.gmail_scraper import (
     _make_noise,
     _make_record,
     _sender_domain,
+    _structural_classify,
 )
 
 
@@ -271,6 +272,69 @@ class TestEngagementEdgeCases(unittest.TestCase):
     def test_sender_domain_extraction(self):
         self.assertEqual(_sender_domain('Sam <sam@drew.edu>'), 'drew.edu')
         self.assertEqual(_sender_domain('plain@test.org'), 'test.org')
+
+
+class TestStructuralClassifier(unittest.TestCase):
+    """Layer 1: structural regex classification before Groq."""
+
+    def test_completed_subject_becomes_logistics(self):
+        e = _email(subject='Scheduled System Maintenance - COMPLETE')
+        r = _structural_classify(e)
+        self.assertIsNotNone(r)
+        self.assertEqual(r['category'], 'logistics')
+        self.assertEqual(r['_filter_stage'], 'structural')
+
+    def test_status_update_becomes_logistics(self):
+        e = _email(subject='Systems Currently Unavailable',
+                   body='Our systems are currently experiencing downtime.')
+        r = _structural_classify(e)
+        self.assertIsNotNone(r)
+        self.assertEqual(r['category'], 'logistics')
+
+    def test_confirmation_becomes_identity(self):
+        e = _email(subject='Thank you for registering!',
+                   body='Welcome to our platform.')
+        r = _structural_classify(e)
+        self.assertIsNotNone(r)
+        self.assertEqual(r['category'], 'identity')
+
+    def test_otp_becomes_identity(self):
+        e = _email(subject='Your verification code is 123456')
+        r = _structural_classify(e)
+        self.assertIsNotNone(r)
+        self.assertEqual(r['category'], 'identity')
+
+    def test_deposit_becomes_financial(self):
+        e = _email(subject='Your payment will be deposited today')
+        r = _structural_classify(e)
+        self.assertIsNotNone(r)
+        self.assertEqual(r['category'], 'financial')
+
+    def test_delivery_becomes_logistics(self):
+        e = _email(subject='Your order is here!')
+        r = _structural_classify(e)
+        self.assertIsNotNone(r)
+        self.assertEqual(r['category'], 'logistics')
+
+    def test_ambiguous_returns_none(self):
+        """Emails without clear structural signals go to Groq."""
+        e = _email(subject='Sign up for advising appointments')
+        r = _structural_classify(e)
+        self.assertIsNone(r)
+
+    def test_action_email_returns_none(self):
+        """Action-oriented emails should NOT be caught by structural classifier."""
+        e = _email(subject='[Action Required] Submit your FAFSA')
+        r = _structural_classify(e)
+        self.assertIsNone(r)
+
+    def test_structural_in_full_pipeline(self):
+        """Structural results appear in _classify_one pipeline."""
+        e = _email(subject='Moodle service has been restored',
+                   gmail_tab='forums', is_important=True)
+        r = _classify_one(e, _mock_client())
+        self.assertEqual(r['_filter_stage'], 'structural')
+        self.assertEqual(r['category'], 'logistics')
 
 
 if __name__ == '__main__':

@@ -143,6 +143,12 @@ _SUBJECT_ACTION_RE = re.compile(
     re.IGNORECASE
 )
 
+# ── Structural classifier patterns (imported from items_adapter) ─────────────
+from apps.gmail.items_adapter import (
+    _COMPLETED_RE, _STATUS_UPDATE_RE, _CONFIRMATION_RE, _OTP_SUBJECT_RE,
+    _ACADEMIC_RECORD_RE, _DEPOSIT_RE, _DELIVERED_RE, _BULK_DIGEST_RE,
+)
+
 # ── Engagement index ──────────────────────────────────────────────────────────
 
 _ENGAGEMENT_CACHE_PATH = Path('output/engagement_cache.json')
@@ -155,7 +161,7 @@ def _sender_domain(address: str) -> str:
     return m.group(1).lower() if m else address.lower().strip()
 
 
-def build_engagement_index(service) -> dict:
+def build_engagement_index(service, cache_path: Path = _ENGAGEMENT_CACHE_PATH) -> dict:
     """
     Build a sender-domain engagement signal from Gmail history.
 
@@ -171,9 +177,9 @@ def build_engagement_index(service) -> dict:
     os.makedirs('output', exist_ok=True)
 
     # Return cached index if fresh
-    if _ENGAGEMENT_CACHE_PATH.exists():
+    if cache_path.exists():
         try:
-            cached = json.loads(_ENGAGEMENT_CACHE_PATH.read_text())
+            cached = json.loads(cache_path.read_text())
             built  = datetime.fromisoformat(cached['built_at'])
             if datetime.now(timezone.utc) - built < timedelta(hours=_ENGAGEMENT_TTL_HOURS):
                 cached['replied_domains'] = set(cached['replied_domains'])
@@ -244,7 +250,7 @@ def build_engagement_index(service) -> dict:
         'opened_domains':  dict(opened_domains),
         'built_at':        datetime.now(timezone.utc).isoformat(),
     }
-    _ENGAGEMENT_CACHE_PATH.write_text(json.dumps(index, indent=2))
+    cache_path.write_text(json.dumps(index, indent=2))
     print(f'  Engagement index: {len(replied_domains)} reply domains, '
           f'{len(opened_domains)} inbox domains cached.')
 
@@ -350,7 +356,8 @@ def _make_record(email: dict) -> dict:
 
 def _make_result(email: dict, category: str, intent: str, confidence: float,
                  consequence: int, urgency_context: str,
-                 summary: str | None, deadline: str | None) -> dict:
+                 summary: str | None, deadline: str | None,
+                 stage: str = 'groq') -> dict:
     body = email.get('body', '')
     full = email.get('subject', '') + ' ' + body
     return {
@@ -367,8 +374,53 @@ def _make_result(email: dict, category: str, intent: str, confidence: float,
         'merchant':        extract_merchant(full) if category == 'financial' else None,
         'action_items':    extract_action_items(body),
         'routes_to':       ROUTES.get(category, []),
-        '_filter_stage':   'groq',
+        '_filter_stage':   stage,
     }
+
+
+def _structural_classify(email: dict) -> dict | None:
+    """Try to classify an email structurally without AI.
+
+    Returns a classification dict if confident, None if ambiguous (needs Groq).
+    High precision, low recall — only fires when certain.
+    """
+    subject = email.get('subject', '')
+    body = (email.get('body') or '')[:500]
+    combined = subject + ' ' + body
+
+    # Completed/resolved actions — subject signals it's done
+    if _COMPLETED_RE.search(subject):
+        return _make_result(email, 'logistics', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
+
+    # System status updates — informational, no user action
+    if _STATUS_UPDATE_RE.search(combined):
+        return _make_result(email, 'logistics', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
+
+    # Confirmations/receipts — action already done
+    if _CONFIRMATION_RE.search(combined):
+        return _make_result(email, 'identity', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
+
+    # OTP/verification codes — ephemeral, not actionable
+    if _OTP_SUBJECT_RE.search(subject):
+        return _make_result(email, 'identity', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
+
+    # Academic grade/score notifications
+    if _ACADEMIC_RECORD_RE.search(combined):
+        return _make_result(email, 'academic', 'data', 0.90, 2, 'evergreen', None, None, stage='structural')
+
+    # Financial deposits/statements — money info, no action
+    if _DEPOSIT_RE.search(combined):
+        return _make_result(email, 'financial', 'data', 0.90, 2, 'evergreen', None, None, stage='structural')
+
+    # Delivery/shipping updates
+    if _DELIVERED_RE.search(subject):
+        return _make_result(email, 'logistics', 'data', 0.90, 1, 'evergreen', None, None, stage='structural')
+
+    # Bulk digests/newsletters
+    if _BULK_DIGEST_RE.search(combined):
+        return _make_result(email, 'social', 'data', 0.85, 1, 'evergreen', None, None, stage='structural')
+
+    return None  # ambiguous — needs Groq
 
 
 def _classify_one(email: dict, client,
@@ -377,24 +429,24 @@ def _classify_one(email: dict, client,
     """Classify a single email through the filter pipeline.
 
     Pipeline (first match wins):
-      1. Tab auto-noise   — promotions/social → dropped
+      1. Tab auto-noise    — promotions/social → dropped
       2. No List-Unsubscribe → personal record → items pool (skip Groq)
-      3. Updates/forums gate — is_important=False + high-freq + low-engagement → dropped
-      4. Everything else   → Groq classifier
+      3. Updates/forums gate — behavioral signals → dropped
+      4. Structural regex   — clear data patterns → record (skip Groq)
+      5. Groq (3-way)       — task/event/opportunity → items pool
     """
     tab     = email.get('gmail_tab', 'unknown')
     subject = email.get('subject', '')
     sender  = email.get('from', '')
-    body    = (email.get('body') or '')[:1500]
+    raw_body = email.get('body') or ''
+    body     = re.sub(r'<[^>]+>', ' ', raw_body)       # strip HTML tags
+    body     = re.sub(r'\s+', ' ', body).strip()[:300]  # collapse whitespace, truncate
 
     # ── 1. Tab auto-noise: promotions/social ───────────────────────────────
     if tab in _AUTO_NOISE_TABS:
         return _make_noise(email, stage='tab_noise')
 
     # ── 2. No List-Unsubscribe → 1:1 personal record (skip Groq) ────────────
-    # CAN-SPAM requires bulk senders to include this header. Its absence means
-    # a transactional/personal email: receipts, security alerts, account events.
-    # Default True for backward compat with older emails missing the field.
     has_unsub = email.get('has_list_unsubscribe', True)
     if not has_unsub and not _SUBJECT_ACTION_RE.search(subject):
         return _make_record(email)
@@ -407,72 +459,38 @@ def _classify_one(email: dict, client,
         if not rare and not engaged:
             return _make_noise(email, stage='updates_noise')
 
-    importance_line = (
-        "★ IMPORTANT — Gmail flagged this as significant based on the user's own email behavior."
-        if is_important else
-        "normal (Gmail did not flag as important)"
-    )
+    # ── 4. Structural classifier: clear data patterns (no AI needed) ────────
+    structural = _structural_classify(email)
+    if structural is not None:
+        return structural
 
-    engaged = not _is_low_engagement(sender, engagement_index)
-    engagement_line = (
-        "yes — user has replied to or repeatedly opened mail from this sender domain"
-        if engaged else
-        "no — sender domain has no reply or open history"
-    )
-
+    # ── 5. Groq: simplified 3-way (task/event/opportunity) ──────────────────
     prompt = f"""You are classifying one email for a personal life OS. Return ONLY a JSON object — no markdown, no extra text.
 
-Gmail signals:
-  importance: {importance_line}
-  tab: {tab}
-  engagement: {engagement_line}
+This email passed structural filters — it likely requires a decision or action from the user.
 
 Email:
   From: {sender[:80]}
   Subject: {subject[:120]}
   Body: {body}
 
-Step 1 — Is this DATA or ACTION?
-  DATA   → an observation about how the user lives. No response needed.
-  ACTION → the user still needs to do something deliberate.
+What type of action does this email represent?
 
-Step 2 — Pick the specific category:
+  task        — the user needs to DO something: reply, submit, sign up, confirm, pay, register, complete a form
+  event       — the user is INVITED TO ATTEND something at a specific time: meeting, info session, reception, clinic, festival, webinar
+  opportunity — OPTIONAL but worth considering: scholarship, internship, career fair, program, survey, challenge
 
-  ACTION categories:
-    task        — deliberate action still possible: reply, submit form, confirm charge, RSVP, pay bill
-    event       — scheduled event the user is invited to: meeting, appointment, webinar, call, info session, reception, clinic, festival
-    opportunity — optional but worth considering: scholarship, survey, focus group, challenge, internship, career fair, program, professional development
+If this email is purely informational with no action needed, return category "social".
 
-  DATA categories:
-    financial   — financial activity or info: purchase receipt, payment, statement, refund, charge, disbursement
-    logistics   — status updates with no response needed: tracking, delivery, system maintenance, outage resolved
-    identity    — account/security events already done: OTP, verification code, login alert, password reset, account change
-    academic    — academic data from any platform: grade posted, assignment notification, course announcement, LMS reminder
-    social      — community/social info: alumni update, club digest, event recap, newsletter, policy announcement, awareness campaign
-
-  noise         — ONLY mass marketing with zero specific information: promotional ads, engagement bait, spam. Institutional announcements are NOT noise.
-
-Rules:
-  - If the action already happened and nothing is left to do → DATA, not action
-  - "Invitation:", "You're Invited", "Reception", "Info Session" → event (action)
-  - Registration, enrollment, schedule available, add/drop → task with urgency_context: available_window
-  - System maintenance, outage, "RESOLVED", "COMPLETE", "restored" → logistics (data)
-  - OTP/verification code → identity (data) — expires in minutes, useless by review time
-  - Assignment/grade notification from LMS → academic (data) — LMS is the source of truth for the action
-  - Shipping/delivery update → logistics (data)
-  - ★ IMPORTANT emails: classify carefully, almost never noise
-  - Institutional announcements (from .edu, organizations, employers) → classify by CONTENT, never noise
-
-Return: {{"category": "task|event|opportunity|financial|academic|logistics|identity|social|noise", "intent": "action|data|noise", "confidence": 0.0-1.0, "consequence": 1-5, "urgency_context": "available_window|hard_deadline|evergreen", "summary": "one sentence what the user must do, or null for data/noise", "deadline": "specific date if mentioned or null"}}
+Return: {{"category": "task|event|opportunity|social", "confidence": 0.0-1.0, "consequence": 1-5, "urgency_context": "available_window|hard_deadline|evergreen", "summary": "one sentence what the user should do or know", "deadline": "specific date if mentioned or null"}}
 
 consequence — how bad is it if the user ignores this entirely?
-  1=no impact, 2=minor, 3=moderate, 4=significant, 5=serious financial/academic/legal consequence
-Use world knowledge about the domain.
+  1=no impact, 2=minor, 3=moderate, 4=significant, 5=serious consequence
 
-urgency_context — time pressure independent of whether a date is mentioned:
-  available_window — important opportunity just opened; no hard date but the window will close (FAFSA, enrollment, scholarship, benefit application)
-  hard_deadline    — explicit date mentioned or strongly implied by context
-  evergreen        — no real time pressure; can be done anytime"""
+urgency_context:
+  available_window — opportunity just opened, window will close (registration, enrollment, FAFSA)
+  hard_deadline    — explicit date mentioned
+  evergreen        — no time pressure"""
 
     try:
         response = client.chat.completions.create(
@@ -490,21 +508,18 @@ urgency_context — time pressure independent of whether a date is mentioned:
         start, end = raw.find('{'), raw.rfind('}') + 1
         if start != -1 and end > start:
             data = json.loads(raw[start:end])
-            cat    = data.get('category', 'noise')
-            intent = data.get('intent', 'noise')
+            cat    = data.get('category', 'social')
             # Legacy aliases
             if cat == 'transaction': cat = 'financial'
-            if cat == 'other':       cat = 'noise'
+            if cat == 'other':       cat = 'social'
+            if cat == 'noise':       cat = 'social'  # Groq shouldn't return noise anymore
             if cat not in VALID_CATEGORIES:
-                cat = 'noise'
-            # Derive intent from category if Groq omits it
-            if intent not in ('action', 'data', 'noise'):
-                if cat in ('task', 'event', 'opportunity'):
-                    intent = 'action'
-                elif cat == 'noise':
-                    intent = 'noise'
-                else:
-                    intent = 'data'
+                cat = 'social'
+            # Derive intent from category
+            if cat in ('task', 'event', 'opportunity'):
+                intent = 'action'
+            else:
+                intent = 'data'
             consequence = max(1, min(5, int(data.get('consequence', 3))))
             urgency_context = data.get('urgency_context', 'evergreen')
             if urgency_context not in ('available_window', 'hard_deadline', 'evergreen'):
@@ -523,30 +538,43 @@ urgency_context — time pressure independent of whether a date is mentioned:
     return _make_result(email, 'noise', 'noise', 0.0, 1, 'evergreen', None, None)
 
 
-def classify_emails(emails: list[dict], gmail_service=None) -> list[dict]:
+_ENGAGEMENT_CACHE_PERSONAL = Path('output/engagement_cache_personal.json')
+_ENGAGEMENT_CACHE_SCHOOL   = Path('output/engagement_cache_school.json')
+
+
+def classify_emails(emails: list[dict], gmail_services: list | None = None) -> list[dict]:
     """Classify all emails through the filter pipeline.
 
     Pipeline order:
-      1. Tab auto-noise (promotions/social/forums)
+      1. Tab auto-noise (promotions/social)
       2. No List-Unsubscribe → personal record (skip Groq)
-      3. Updates gate (frequency + engagement)
-      4. Everything else → Groq
+      3. Updates/forums gate (frequency + engagement)
+      4. Structural regex → data records (skip Groq)
+      5. Groq (simplified 3-way: task/event/opportunity)
 
-    gmail_service: authenticated Gmail API service object. When provided, the
-    engagement index is built (or loaded from cache) to gate the updates tab.
+    gmail_services: list of authenticated Gmail API service objects (personal + school).
+    Engagement indexes are built from ALL accounts and merged.
     """
     api_key = os.getenv('GROQ_API_KEY', '')
     if not api_key:
         print('  ⚠️  GROQ_API_KEY not set — all emails marked other.')
         return [_make_result(e, 'other', 'noise', 0.0, 1, 'evergreen', None, None) for e in emails]
 
-    # Build behavioral indexes once
+    # Build and merge engagement indexes from all accounts
+    cache_paths = [_ENGAGEMENT_CACHE_PERSONAL, _ENGAGEMENT_CACHE_SCHOOL]
     engagement_index = None
-    if gmail_service is not None:
+    for i, service in enumerate(gmail_services or []):
         try:
-            engagement_index = build_engagement_index(gmail_service)
+            cache_path = cache_paths[i] if i < len(cache_paths) else _ENGAGEMENT_CACHE_PATH
+            idx = build_engagement_index(service, cache_path=cache_path)
+            if engagement_index is None:
+                engagement_index = idx
+            else:
+                engagement_index['replied_domains'] |= idx['replied_domains']
+                for domain, count in idx['opened_domains'].items():
+                    engagement_index['opened_domains'][domain] += count
         except Exception as e:
-            print(f'  ⚠️  Engagement index failed, updates tab will pass through: {e}')
+            print(f'  ⚠️  Engagement index failed for account {i+1}: {e}')
 
     frequency_index = _build_frequency_index()
 
@@ -563,7 +591,7 @@ def classify_emails(emails: list[dict], gmail_service=None) -> list[dict]:
     stages = defaultdict(int)
     for r in results:
         stages[r.get('_filter_stage', 'unknown')] += 1
-    parts = [f'{stages.get(s, 0)} {s}' for s in ('tab_noise', 'record', 'updates_noise', 'groq') if stages.get(s)]
+    parts = [f'{stages.get(s, 0)} {s}' for s in ('tab_noise', 'record', 'updates_noise', 'structural', 'groq') if stages.get(s)]
     print(f'  Pipeline: {len(results)} total → {" | ".join(parts)}')
 
     return results
@@ -794,19 +822,21 @@ async def main(creds: tuple = None, days: int = None):
 
     all_emails = []
 
-    gmail_service = None
+    gmail_services = []
 
     # ── Personal email ─────────────────────────────────────
     print()
     print('─' * 60)
     print('GMAIL — Personal Account (API)')
     print('─' * 60)
-    personal_emails, gmail_service = scrape_gmail_api(
+    personal_emails, personal_service = scrape_gmail_api(
         max_results=max_emails, days=days,
         token_path=TOKEN_PATH, source='personal',
     )
     print(f'  ✅ {len(personal_emails)} emails fetched.')
     all_emails.extend(personal_emails)
+    if personal_service:
+        gmail_services.append(personal_service)
 
     # ── School email ──────────────────────────────────────
     if TOKEN_PATH_SCHOOL.exists() or not TOKEN_PATH.exists():
@@ -820,8 +850,8 @@ async def main(creds: tuple = None, days: int = None):
         )
         print(f'  ✅ {len(school_emails)} emails fetched.')
         all_emails.extend(school_emails)
-        if gmail_service is None:
-            gmail_service = school_service
+        if school_service:
+            gmail_services.append(school_service)
     else:
         print('⏭️  School Gmail skipped (no token_school.json).')
 
@@ -860,7 +890,7 @@ async def main(creds: tuple = None, days: int = None):
 
     category_counts = {}
 
-    results = classify_emails(all_emails, gmail_service=gmail_service)
+    results = classify_emails(all_emails, gmail_services=gmail_services)
     for r in results:
         route_to_db(r, r)
         cat = r['category']
