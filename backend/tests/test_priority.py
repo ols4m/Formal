@@ -95,6 +95,24 @@ class TestAdditiveScoring(unittest.TestCase):
         self.assertAlmostEqual(W_URGENCY + W_CONSEQUENCE + W_IMPORTANCE, 1.0)
 
 
+class TestReputationBoost(unittest.TestCase):
+    def test_no_conn_no_change(self):
+        """Without a DB connection, reputation has no effect."""
+        base = _item(importance=3, consequence=3, due_at=None,
+                     raw_payload={"sender_domain": "example.com"})
+        no_domain = _item(importance=3, consequence=3, due_at=None)
+        self.assertEqual(
+            score_item(base, conn=None)["score"],
+            score_item(no_domain, conn=None)["score"],
+        )
+
+    def test_reasons_has_reputation_boost(self):
+        item = _item(importance=3, consequence=3, due_at=None)
+        result = score_item(item)
+        self.assertIn("reputation_boost", result["reasons"])
+        self.assertEqual(result["reasons"]["reputation_boost"], 0.0)
+
+
 class TestScoreAndTier(unittest.TestCase):
     def test_score_clamped_between_0_and_1(self):
         item = _item(importance=5, consequence=5, due_at=_due(-1))

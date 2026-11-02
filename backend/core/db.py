@@ -104,6 +104,14 @@ def init_db():
                 WHERE source_item_id IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_items_status_due
                 ON items (status, due_at);
+
+            -- Sender reputation learned from user done/dismiss actions
+            CREATE TABLE IF NOT EXISTS sender_reputation (
+                domain        TEXT PRIMARY KEY,
+                done_count    INTEGER NOT NULL DEFAULT 0,
+                dismiss_count INTEGER NOT NULL DEFAULT 0,
+                updated_at    TEXT NOT NULL
+            );
         """)
         _migrate_period_columns(conn, "grades")
         _migrate_period_columns(conn, "assignments")

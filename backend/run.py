@@ -138,7 +138,7 @@ async def main():
     print("─" * 60)
     print("STEP 5 — Gmail Intake (school + personal)")
     print("─" * 60)
-    await run_gmail(creds=creds)
+    await run_gmail(creds=creds, use_ai=False)
 
     print()
     print("=" * 60)

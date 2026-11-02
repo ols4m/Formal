@@ -423,7 +423,7 @@ def _structural_classify(email: dict) -> dict | None:
     return None  # ambiguous — needs Groq
 
 
-def _classify_one(email: dict, client,
+def _classify_one(email: dict, client=None,
                    engagement_index: dict | None = None,
                    frequency_index: dict[str, int] | None = None) -> dict:
     """Classify a single email through the filter pipeline.
@@ -433,7 +433,7 @@ def _classify_one(email: dict, client,
       2. No List-Unsubscribe → personal record → items pool (skip Groq)
       3. Updates/forums gate — behavioral signals → dropped
       4. Structural regex   — clear data patterns → record (skip Groq)
-      5. Groq (3-way)       — task/event/opportunity → items pool
+      5. AI (optional) or unclassified fallback → items pool
     """
     tab     = email.get('gmail_tab', 'unknown')
     subject = email.get('subject', '')
@@ -442,29 +442,43 @@ def _classify_one(email: dict, client,
     body     = re.sub(r'<[^>]+>', ' ', raw_body)       # strip HTML tags
     body     = re.sub(r'\s+', ' ', body).strip()[:300]  # collapse whitespace, truncate
 
+    # Compute engagement signals once — injected into every result
+    _rare     = _is_rare_sender(sender, frequency_index or {})
+    _engaged  = not _is_low_engagement(sender, engagement_index)
+    _domain   = _sender_domain(sender)
+
+    def _enrich(result: dict) -> dict:
+        result['_rare_sender']    = _rare
+        result['_engaged_sender'] = _engaged
+        result['_sender_domain']  = _domain
+        return result
+
     # ── 1. Tab auto-noise: promotions/social ───────────────────────────────
     if tab in _AUTO_NOISE_TABS:
-        return _make_noise(email, stage='tab_noise')
+        return _enrich(_make_noise(email, stage='tab_noise'))
 
     # ── 2. No List-Unsubscribe → 1:1 personal record (skip Groq) ────────────
     has_unsub = email.get('has_list_unsubscribe', True)
     if not has_unsub and not _SUBJECT_ACTION_RE.search(subject):
-        return _make_record(email)
+        return _enrich(_make_record(email))
 
     # ── 3. Updates/forums gate: behavioral signals for mass-sent mail ───────
     is_important = email.get('is_important', False)
     if tab in ('updates', 'forums') and not is_important:
-        rare = _is_rare_sender(sender, frequency_index or {})
-        engaged = not _is_low_engagement(sender, engagement_index)
-        if not rare and not engaged:
-            return _make_noise(email, stage='updates_noise')
+        if not _rare and not _engaged:
+            return _enrich(_make_noise(email, stage='updates_noise'))
 
     # ── 4. Structural classifier: clear data patterns (no AI needed) ────────
     structural = _structural_classify(email)
     if structural is not None:
-        return structural
+        return _enrich(structural)
 
-    # ── 5. Groq: simplified 3-way (task/event/opportunity) ──────────────────
+    # ── 5. AI classification (optional) or unclassified fallback ────────────
+    if client is None:
+        return _enrich(_make_result(
+            email, 'task', 'action', 0.50, 2, 'evergreen', None, None,
+            stage='unclassified',
+        ))
     prompt = f"""You are classifying one email for a personal life OS. Return ONLY a JSON object — no markdown, no extra text.
 
 This email passed structural filters — it likely requires a decision or action from the user.
@@ -524,25 +538,30 @@ urgency_context:
             urgency_context = data.get('urgency_context', 'evergreen')
             if urgency_context not in ('available_window', 'hard_deadline', 'evergreen'):
                 urgency_context = 'evergreen'
-            return _make_result(
+            return _enrich(_make_result(
                 email, cat, intent,
                 float(data.get('confidence', 0.5)),
                 consequence,
                 urgency_context,
                 data.get('summary'),
                 data.get('deadline'),
-            )
+            ))
     except Exception:
         pass
 
-    return _make_result(email, 'noise', 'noise', 0.0, 1, 'evergreen', None, None)
+    # Groq failed — unclassified fallback instead of dropping as noise
+    return _enrich(_make_result(
+        email, 'task', 'action', 0.50, 2, 'evergreen', None, None,
+        stage='unclassified',
+    ))
 
 
 _ENGAGEMENT_CACHE_PERSONAL = Path('output/engagement_cache_personal.json')
 _ENGAGEMENT_CACHE_SCHOOL   = Path('output/engagement_cache_school.json')
 
 
-def classify_emails(emails: list[dict], gmail_services: list | None = None) -> list[dict]:
+def classify_emails(emails: list[dict], gmail_services: list | None = None,
+                     use_ai: bool = False) -> list[dict]:
     """Classify all emails through the filter pipeline.
 
     Pipeline order:
@@ -550,16 +569,11 @@ def classify_emails(emails: list[dict], gmail_services: list | None = None) -> l
       2. No List-Unsubscribe → personal record (skip Groq)
       3. Updates/forums gate (frequency + engagement)
       4. Structural regex → data records (skip Groq)
-      5. Groq (simplified 3-way: task/event/opportunity)
+      5. AI (when use_ai=True) or unclassified fallback
 
     gmail_services: list of authenticated Gmail API service objects (personal + school).
     Engagement indexes are built from ALL accounts and merged.
     """
-    api_key = os.getenv('GROQ_API_KEY', '')
-    if not api_key:
-        print('  ⚠️  GROQ_API_KEY not set — all emails marked other.')
-        return [_make_result(e, 'other', 'noise', 0.0, 1, 'evergreen', None, None) for e in emails]
-
     # Build and merge engagement indexes from all accounts
     cache_paths = [_ENGAGEMENT_CACHE_PERSONAL, _ENGAGEMENT_CACHE_SCHOOL]
     engagement_index = None
@@ -578,20 +592,47 @@ def classify_emails(emails: list[dict], gmail_services: list | None = None) -> l
 
     frequency_index = _build_frequency_index()
 
-    from groq import Groq
-    client  = Groq(api_key=api_key)
+    client = None
+    if use_ai:
+        api_key = os.getenv('GROQ_API_KEY', '')
+        if api_key:
+            from groq import Groq
+            client = Groq(api_key=api_key)
+        else:
+            print('  note: --ai requested but GROQ_API_KEY not set; using structural only.')
+
+    # Skip emails already in the items pool
+    try:
+        pool_conn = get_db()
+        existing_ids = {
+            row["source_item_id"]
+            for row in pool_conn.execute(
+                "SELECT source_item_id FROM items WHERE source IN ('gmail_personal', 'gmail_school') AND source_item_id IS NOT NULL"
+            ).fetchall()
+        }
+        pool_conn.close()
+    except Exception:
+        existing_ids = set()
+
     results = []
+    skipped = 0
 
     for i, email in enumerate(emails, 1):
+        if email.get('id', '') in existing_ids:
+            skipped += 1
+            continue
         if i % 10 == 0 or i == len(emails):
             print(f'  Classifying {i}/{len(emails)}...')
         results.append(_classify_one(email, client, engagement_index, frequency_index))
+
+    if skipped:
+        print(f'  Skipped {skipped} email(s) already in pool.')
 
     # Pipeline summary
     stages = defaultdict(int)
     for r in results:
         stages[r.get('_filter_stage', 'unknown')] += 1
-    parts = [f'{stages.get(s, 0)} {s}' for s in ('tab_noise', 'record', 'updates_noise', 'structural', 'groq') if stages.get(s)]
+    parts = [f'{stages.get(s, 0)} {s}' for s in ('tab_noise', 'record', 'updates_noise', 'structural', 'groq', 'unclassified') if stages.get(s)]
     print(f'  Pipeline: {len(results)} total → {" | ".join(parts)}')
 
     return results
@@ -804,7 +845,7 @@ def route_to_db(email: dict, classification: dict):
 # MAIN
 # ==========================================
 
-async def main(creds: tuple = None, days: int = None):
+async def main(creds: tuple = None, days: int = None, use_ai: bool = False):
     email_arg = username_arg = password_arg = None
     if creds:
         email_arg, username_arg, password_arg = creds
@@ -890,7 +931,7 @@ async def main(creds: tuple = None, days: int = None):
 
     category_counts = {}
 
-    results = classify_emails(all_emails, gmail_services=gmail_services)
+    results = classify_emails(all_emails, gmail_services=gmail_services, use_ai=use_ai)
     for r in results:
         route_to_db(r, r)
         cat = r['category']
@@ -1027,4 +1068,8 @@ async def main(creds: tuple = None, days: int = None):
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    import argparse as _ap
+    _parser = _ap.ArgumentParser(description='Gmail intake for Formal')
+    _parser.add_argument('--ai', action='store_true', help='Use Groq AI for classification')
+    _args = _parser.parse_args()
+    asyncio.run(main(use_ai=_args.ai))

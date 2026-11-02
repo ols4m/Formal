@@ -9,6 +9,10 @@ from typing import Sequence
 
 from core.items import Item
 
+def _sender_domain(address: str) -> str:
+    m = re.search(r'@([\w.\-]+)', address)
+    return m.group(1).lower() if m else address.lower().strip()
+
 ACTION_CATEGORIES = {"task", "event", "opportunity"}
 DATA_CATEGORIES   = {"financial", "academic", "logistics", "identity", "social"}
 
@@ -312,33 +316,35 @@ def _record_type(emails: list[dict], category: str) -> str | None:
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
 def _derive_consequence(emails: list[dict], category: str) -> int:
-    # Trust Groq's domain-knowledge consequence as the primary signal.
-    # Heuristics nudge by at most ±1 so cumulative stacking can't override domain judgement.
-    groq_consequence = emails[-1].get("consequence", 2)
-    has_deadline = any(e.get("deadline") for e in emails)
-    is_important = any(e.get("is_important") for e in emails)
-    delta = 0
-    if not has_deadline:                        delta -= 1   # missing deadline = less urgent
-    if groq_consequence <= 2 and is_important:  delta += 1  # low-score item Gmail flagged
-    return max(1, min(5, groq_consequence + delta))
+    score = 2
+    if any(e.get("is_important") for e in emails):
+        score += 1
+    # Dollar amounts in subject or body
+    combined = " ".join(e.get("subject", "") + " " + (e.get("body") or "")[:300] for e in emails)
+    if re.search(r'\$[\d,]+', combined):
+        score += 1
+    # Mandatory/required language in subject
+    subjects = " ".join(e.get("subject", "") for e in emails)
+    if re.search(r'\b(required|mandatory|must)\b', subjects, re.IGNORECASE):
+        score += 1
+    return max(1, min(5, score))
 
 
 def _derive_importance(emails: list[dict]) -> int:
-    is_important     = any(e.get("is_important") for e in emails)
-    has_action_items = any(e.get("action_items") for e in emails)
-    avg_conf = sum(e.get("confidence", 0.5) for e in emails) / len(emails)
-
-    score = 3
-    if is_important:         score += 1
-    if not has_action_items: score -= 1
-    if avg_conf < 0.60:      score -= 1  # uncertain classification → less important
+    score = 2
+    if any(e.get("is_important") for e in emails):
+        score += 1
+    if any(e.get("_engaged_sender") for e in emails):
+        score += 1
+    if any(e.get("_rare_sender") for e in emails):
+        score += 1
 
     # High-stakes actions that just became available (FAFSA, grants, scholarships, etc.)
-    combined = " ".join(e.get("subject", "") + " " + e.get("body", "")[:300] for e in emails)
+    combined = " ".join(e.get("subject", "") + " " + (e.get("body") or "")[:300] for e in emails)
     if _HIGH_STAKES_AVAILABLE_RE.search(combined):
         score = max(score, 4)
 
-    return max(1, min(score, 5))
+    return max(1, min(5, score))
 
 
 def _derive_effort(category: str, emails: list[dict]) -> float:
@@ -375,6 +381,8 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
     # fall back to regex _record_type() for action-labeled emails that are actually data
     rt = _DATA_RECORD_TYPE.get(category) or _record_type(emails, category)
 
+    sender_domain = emails[-1].get("_sender_domain") or _sender_domain(emails[-1].get("from", ""))
+
     if rt is not None:
         description = " | ".join(
             dict.fromkeys(
@@ -404,6 +412,9 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
                 "merchant":     emails[-1].get("merchant"),
                 "gmail_tab":    emails[-1].get("gmail_tab"),
                 "is_important": any(e.get("is_important") for e in emails),
+                "sender_domain":   sender_domain,
+                "engaged_sender":  any(e.get("_engaged_sender") for e in emails),
+                "rare_sender":     any(e.get("_rare_sender") for e in emails),
             },
         )
 
@@ -436,6 +447,9 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
             "email_ids":       [e.get("id") for e in emails],
             "gmail_tab":       emails[-1].get("gmail_tab"),
             "is_important":    any(e.get("is_important") for e in emails),
+            "sender_domain":   sender_domain,
+            "engaged_sender":  any(e.get("_engaged_sender") for e in emails),
+            "rare_sender":     any(e.get("_rare_sender") for e in emails),
         },
     )
 

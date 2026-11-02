@@ -25,6 +25,7 @@ Tier bands:
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 from typing import TypedDict
 
@@ -81,7 +82,29 @@ def _tier(score: float) -> str:
     return "D"
 
 
-def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
+def _reputation_boost(sender_domain: str | None, conn: sqlite3.Connection | None) -> float:
+    """Compute an importance nudge from user done/dismiss history for this sender domain."""
+    if not sender_domain or conn is None:
+        return 0.0
+    try:
+        row = conn.execute(
+            "SELECT done_count, dismiss_count FROM sender_reputation WHERE domain = ?",
+            (sender_domain,),
+        ).fetchone()
+    except Exception:
+        return 0.0
+    if not row:
+        return 0.0
+    done, dismiss = row["done_count"], row["dismiss_count"]
+    total = done + dismiss
+    if total < 2:
+        return 0.0  # too few signals
+    ratio = done / total  # 0.0 = all dismissed, 1.0 = all done
+    return (ratio - 0.5) * 0.4  # maps to [-0.2, +0.2]
+
+
+def score_item(item: Item, now: datetime | None = None,
+               conn: sqlite3.Connection | None = None) -> ScoreResult:
     """Return priority score, tier, and explainable reasons for one Item."""
     now = now or datetime.now(timezone.utc)
 
@@ -96,6 +119,12 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
     if is_important:
         importance_norm = min(importance_norm + 0.10, 1.0)
 
+    # Sender reputation nudge (learned from user done/dismiss actions)
+    sender_domain = payload.get("sender_domain")
+    rep_boost = _reputation_boost(sender_domain, conn)
+    if rep_boost:
+        importance_norm = min(max(importance_norm + rep_boost, 0.0), 1.0)
+
     raw = W_URGENCY * urgency_factor + W_CONSEQUENCE * consequence_norm + W_IMPORTANCE * importance_norm
 
     score = round(min(max(raw, 0.0), 1.0), 4)
@@ -109,6 +138,7 @@ def score_item(item: Item, now: datetime | None = None) -> ScoreResult:
         "urgency_context": urgency_context,
         "urgency_factor": round(urgency_factor, 4),
         "is_important_boost": is_important,
+        "reputation_boost": round(rep_boost, 4),
         "effort": f"{item.effort_minutes:.0f} min" if item.effort_minutes else "unknown",
         "raw": round(raw, 4),
     }

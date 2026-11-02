@@ -337,5 +337,58 @@ class TestStructuralClassifier(unittest.TestCase):
         self.assertEqual(r['category'], 'logistics')
 
 
+class TestUnclassifiedFallback(unittest.TestCase):
+    """When client=None, ambiguous emails get unclassified fallback."""
+
+    def test_primary_no_client_is_unclassified(self):
+        e = _email(gmail_tab='primary')
+        r = _classify_one(e, client=None)
+        self.assertEqual(r['_filter_stage'], 'unclassified')
+        self.assertEqual(r['category'], 'task')
+        self.assertEqual(r['consequence'], 2)
+
+    def test_structural_still_works_without_client(self):
+        e = _email(subject='Your verification code is 123456')
+        r = _classify_one(e, client=None)
+        self.assertEqual(r['_filter_stage'], 'structural')
+
+    def test_record_still_works_without_client(self):
+        e = _email(has_list_unsubscribe=False, subject='You spent $6.30')
+        r = _classify_one(e, client=None)
+        self.assertEqual(r['_filter_stage'], 'record')
+
+    def test_tab_noise_still_works_without_client(self):
+        e = _email(gmail_tab='promotions')
+        r = _classify_one(e, client=None)
+        self.assertEqual(r['_filter_stage'], 'tab_noise')
+
+
+class TestEnrichmentFields(unittest.TestCase):
+    """Every classified email has engagement and domain annotations."""
+
+    def test_enrichment_on_unclassified(self):
+        e = _email(gmail_tab='primary')
+        r = _classify_one(e, client=None)
+        self.assertIn('_rare_sender', r)
+        self.assertIn('_engaged_sender', r)
+        self.assertIn('_sender_domain', r)
+        self.assertEqual(r['_sender_domain'], 'example.com')
+
+    def test_enrichment_on_groq(self):
+        e = _email(gmail_tab='primary')
+        r = _classify_one(e, _mock_client())
+        self.assertIn('_sender_domain', r)
+
+    def test_enrichment_on_noise(self):
+        e = _email(gmail_tab='promotions')
+        r = _classify_one(e, client=None)
+        self.assertIn('_sender_domain', r)
+
+    def test_enrichment_on_structural(self):
+        e = _email(subject='Your verification code is 123456')
+        r = _classify_one(e, client=None)
+        self.assertIn('_sender_domain', r)
+
+
 if __name__ == '__main__':
     unittest.main()
