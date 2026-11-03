@@ -23,10 +23,14 @@ def _due(days: float) -> str:
 
 
 class TestUrgency(unittest.TestCase):
-    def test_overdue_urgency_is_max(self):
-        item = _item(due_at=_due(-1))
-        result = score_item(item)
-        self.assertEqual(result["reasons"]["urgency_factor"], 1.0)
+    def test_overdue_urgency_decays(self):
+        """Overdue items decay: ≤1d=1.0, 1-3d=0.70, 3-7d=0.40."""
+        just_missed = _item(due_at=_due(-0.5))
+        self.assertEqual(score_item(just_missed)["reasons"]["urgency_factor"], 1.0)
+        two_days = _item(due_at=_due(-2))
+        self.assertEqual(score_item(two_days)["reasons"]["urgency_factor"], 0.70)
+        five_days = _item(due_at=_due(-5))
+        self.assertEqual(score_item(five_days)["reasons"]["urgency_factor"], 0.40)
 
     def test_due_today_urgency(self):
         item = _item(due_at=_due(0.5))

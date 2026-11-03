@@ -56,6 +56,9 @@ def print_agenda(show_all=False):
     init_db()
     conn = get_db()
     repo = ItemRepository(connection=conn)
+    archived = repo.archive_past_items()
+    if archived:
+        print(f"  Archived {archived} past item(s).")
     scored = _load_open_items(repo, show_all, conn=conn)
 
     # Default view: S/A/B tier only (actionable items)

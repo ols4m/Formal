@@ -12,7 +12,9 @@ Formula (additive weighted sum):
 No factor can zero out another. Each contributes independently.
 
 Urgency factor (days until due_at, relative to UTC now):
-    overdue          → 1.00
+    overdue ≤1 day   → 1.00
+    overdue 1–3 days → 0.70
+    overdue 3–7 days → 0.40  (7+ auto-archived)
     0 < days <= 1    → 0.90
     1 < days <= 7    → linear 0.90 → 0.50
     7 < days <= 30   → linear 0.50 → 0.10
@@ -60,7 +62,12 @@ def _urgency(due_at: str | None, now: datetime, urgency_context: str | None = No
         due = due.replace(tzinfo=timezone.utc)
     days = (due - now).total_seconds() / 86400.0
     if days <= 0:
-        return 1.00
+        overdue = -days
+        if overdue <= 1:
+            return 1.00
+        if overdue <= 3:
+            return 0.70
+        return 0.40  # 3-7 days overdue; 7+ auto-archived elsewhere
     if days <= 1:
         return 0.90
     if days <= 7:

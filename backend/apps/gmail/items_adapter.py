@@ -319,13 +319,15 @@ def _derive_consequence(emails: list[dict], category: str) -> int:
     score = 2
     if any(e.get("is_important") for e in emails):
         score += 1
-    # Dollar amounts in subject or body
-    combined = " ".join(e.get("subject", "") + " " + (e.get("body") or "")[:300] for e in emails)
+    combined = " ".join(e.get("subject", "") + " " + (e.get("body") or "")[:500] for e in emails)
     if re.search(r'\$[\d,]+', combined):
         score += 1
-    # Mandatory/required language in subject
     subjects = " ".join(e.get("subject", "") for e in emails)
     if re.search(r'\b(required|mandatory|must)\b', subjects, re.IGNORECASE):
+        score += 1
+    if _RESPONSE_RE.search(combined):
+        score += 1
+    if any(e.get("action_items") for e in emails):
         score += 1
     return max(1, min(5, score))
 
@@ -339,8 +341,7 @@ def _derive_importance(emails: list[dict]) -> int:
     if any(e.get("_rare_sender") for e in emails):
         score += 1
 
-    # High-stakes actions that just became available (FAFSA, grants, scholarships, etc.)
-    combined = " ".join(e.get("subject", "") + " " + (e.get("body") or "")[:300] for e in emails)
+    combined = " ".join(e.get("subject", "") + " " + (e.get("body") or "")[:500] for e in emails)
     if _HIGH_STAKES_AVAILABLE_RE.search(combined):
         score = max(score, 4)
 
@@ -428,6 +429,17 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
     )[:500] or None
 
     item_type = "event" if category == "event" else "task"
+    due_at = _parse_due_at(emails)
+    has_action_items = any(e.get("action_items") for e in emails)
+
+    # Derive urgency_context structurally
+    urgency_context = emails[-1].get("urgency_context", "evergreen")
+    if urgency_context == "evergreen":
+        combined = " ".join(e.get("subject", "") + " " + (e.get("body") or "")[:500] for e in emails)
+        if due_at:
+            urgency_context = "hard_deadline"
+        elif _HIGH_STAKES_AVAILABLE_RE.search(combined):
+            urgency_context = "available_window"
 
     return Item(
         source=source,
@@ -438,18 +450,19 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
         importance=_derive_importance(emails),
         consequence=_derive_consequence(emails, category),
         effort_minutes=_derive_effort(category, emails),
-        due_at=_parse_due_at(emails),
+        due_at=due_at,
         raw_payload={
             "category":        category,
             "intent":          emails[-1].get("intent", "action"),
             "consequence":     emails[-1].get("consequence", 3),
-            "urgency_context": emails[-1].get("urgency_context", "evergreen"),
+            "urgency_context": urgency_context,
             "email_ids":       [e.get("id") for e in emails],
             "gmail_tab":       emails[-1].get("gmail_tab"),
             "is_important":    any(e.get("is_important") for e in emails),
             "sender_domain":   sender_domain,
             "engaged_sender":  any(e.get("_engaged_sender") for e in emails),
             "rare_sender":     any(e.get("_rare_sender") for e in emails),
+            "has_action_items": has_action_items,
         },
     )
 
