@@ -423,6 +423,22 @@ def _structural_classify(email: dict) -> dict | None:
     return None  # ambiguous — needs Groq
 
 
+def _unclassified_fallback(email: dict, has_unsub: bool, tab: str,
+                           is_important: bool, subject: str) -> dict:
+    """Signal-based fallback when AI classification is unavailable or fails."""
+    if _SUBJECT_ACTION_RE.search(subject):
+        cat, intent, cons, stage = 'task', 'action', 2, 'unclassified'
+    elif has_unsub and tab in ('updates', 'forums'):
+        cat, intent, cons, stage = 'social', 'data', 1, 'unclassified_newsletter'
+    else:
+        cons  = 2 if is_important else 1
+        cat, intent, stage = 'task', 'action', 'unclassified'
+    return _make_result(
+        email, cat, intent, 0.50, cons, 'evergreen',
+        None, None, stage=stage,
+    )
+
+
 def _classify_one(email: dict, client=None,
                    engagement_index: dict | None = None,
                    frequency_index: dict[str, int] | None = None) -> dict:
@@ -475,10 +491,7 @@ def _classify_one(email: dict, client=None,
 
     # ── 5. AI classification (optional) or unclassified fallback ────────────
     if client is None:
-        return _enrich(_make_result(
-            email, 'task', 'action', 0.50, 2, 'evergreen', None, None,
-            stage='unclassified',
-        ))
+        return _enrich(_unclassified_fallback(email, has_unsub, tab, is_important, subject))
     prompt = f"""You are classifying one email for a personal life OS. Return ONLY a JSON object — no markdown, no extra text.
 
 This email passed structural filters — it likely requires a decision or action from the user.
@@ -549,11 +562,8 @@ urgency_context:
     except Exception:
         pass
 
-    # Groq failed — unclassified fallback instead of dropping as noise
-    return _enrich(_make_result(
-        email, 'task', 'action', 0.50, 2, 'evergreen', None, None,
-        stage='unclassified',
-    ))
+    # Groq failed — use signal-based fallback instead of dropping as noise
+    return _enrich(_unclassified_fallback(email, has_unsub, tab, is_important, subject))
 
 
 _ENGAGEMENT_CACHE_PERSONAL = Path('output/engagement_cache_personal.json')
@@ -632,7 +642,7 @@ def classify_emails(emails: list[dict], gmail_services: list | None = None,
     stages = defaultdict(int)
     for r in results:
         stages[r.get('_filter_stage', 'unknown')] += 1
-    parts = [f'{stages.get(s, 0)} {s}' for s in ('tab_noise', 'record', 'updates_noise', 'structural', 'groq', 'unclassified') if stages.get(s)]
+    parts = [f'{stages.get(s, 0)} {s}' for s in ('tab_noise', 'record', 'updates_noise', 'structural', 'groq', 'unclassified', 'unclassified_newsletter') if stages.get(s)]
     print(f'  Pipeline: {len(results)} total → {" | ".join(parts)}')
 
     return results
@@ -900,22 +910,14 @@ async def main(creds: tuple = None, days: int = None, use_ai: bool = False):
         print('⚠️  No emails fetched.')
         return
 
-    # ── Deduplication ──────────────────────────────────────
-    def _norm_subject(s: str) -> str:
-        s = re.sub(r'^\[[\w\s]+\]\s*', '', s)          # strip [Updated], [Reminder], etc.
-        s = re.sub(r'^(re|fwd?)[:\s]+', '', s, flags=re.IGNORECASE)
-        return s.strip().lower()
-
-    seen_ids   = set()
-    seen_pairs = set()
-    deduped    = []
+    # ── Deduplication (by Gmail message ID only) ─────────────
+    seen_ids = set()
+    deduped  = []
     for em in all_emails:
-        key_id   = em.get('id', '')
-        key_pair = (em.get('from', '').lower(), _norm_subject(em.get('subject', '')))
-        if key_id in seen_ids or key_pair in seen_pairs:
+        key_id = em.get('id', '')
+        if key_id in seen_ids:
             continue
         seen_ids.add(key_id)
-        seen_pairs.add(key_pair)
         deduped.append(em)
 
     dupes = len(all_emails) - len(deduped)
