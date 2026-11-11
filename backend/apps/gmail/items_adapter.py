@@ -480,12 +480,6 @@ def emails_to_items(emails: list[dict], source: str = "gmail_personal") -> list[
         if legacy is not None:
             e["category"] = legacy
 
-    # Promote calendar invites to event regardless of Groq classification
-    for e in emails:
-        if _INVITE_RE.match(e.get("subject", "")) and e.get("category") not in ACTION_CATEGORIES:
-            e["category"] = "event"
-            e["intent"]   = "action"
-
     # Include action AND data categories — noise is the only discard,
     # UNLESS Gmail flagged it as important (Groq misclassification safety net).
     pooled = [

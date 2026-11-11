@@ -354,22 +354,6 @@ def _make_noise(email: dict, stage: str = 'tab_noise') -> dict:
     }
 
 
-def _make_record(email: dict) -> dict:
-    """Build a classification dict for a personal record that bypasses Groq."""
-    body = email.get('body', '')
-    full = email.get('subject', '') + ' ' + body
-    return {
-        **email,
-        'category': 'uncategorized', 'intent': 'data', 'confidence': 1.0,
-        'consequence': 3, 'urgency_context': 'evergreen',
-        'summary': None, 'deadline': None,
-        'financial_impact': bool(_FINANCIAL_PATTERN.search(full)),
-        'amounts': extract_amounts(full),
-        'merchant': extract_merchant(full),
-        'action_items': [], 'routes_to': [],
-        '_filter_stage': 'record',
-    }
-
 
 def _make_result(email: dict, category: str, intent: str, confidence: float,
                  consequence: int, urgency_context: str,
@@ -463,10 +447,8 @@ def _classify_one(email: dict, client=None,
 
     Pipeline (first match wins):
       1. Tab gate           — promotions/social with low engagement → dropped
-      2. No List-Unsubscribe → personal record → items pool (skip Groq)
-      3. Updates/forums gate — behavioral signals → dropped
-      4. Structural regex   — clear data patterns → record (skip Groq)
-      5. AI (optional) or unclassified fallback → items pool
+      2. Updates/forums gate — behavioral signals → dropped
+      3. AI (optional) or unclassified fallback → pool
     """
     tab     = email.get('gmail_tab', 'unknown')
     subject = email.get('subject', '')
@@ -480,37 +462,44 @@ def _classify_one(email: dict, client=None,
     _engaged  = not _is_low_engagement(sender, engagement_index)
     _domain   = _sender_domain(sender)
 
+    _pass_reason = None
+
     def _enrich(result: dict) -> dict:
         result['_rare_sender']    = _rare
         result['_engaged_sender'] = _engaged
         result['_sender_domain']  = _domain
+        result['_pass_reason']    = _pass_reason
         return result
 
     is_important = email.get('is_important', False)
 
     # ── 1. Tab gate: promotions/social → engagement check ────────────────
     if tab in ('promotions', 'social'):
-        if not is_important and _is_low_engagement_at_threshold(sender, engagement_index):
+        if is_important:
+            _pass_reason = 'important'
+        elif not _is_low_engagement_at_threshold(sender, engagement_index):
+            _pass_reason = 'engaged_5'
+        else:
             return _enrich(_make_noise(email, stage='tab_noise'))
+    else:
+        _pass_reason = 'not_promo_social'
 
-    # ── 2. No List-Unsubscribe → 1:1 personal record (skip Groq) ────────────
-    has_unsub = email.get('has_list_unsubscribe', True)
-    if not has_unsub and not _SUBJECT_ACTION_RE.search(subject):
-        return _enrich(_make_record(email))
-
-    # ── 3. Updates/forums gate: behavioral signals for mass-sent mail ───────
-    if tab in ('updates', 'forums') and not is_important:
-        if not _rare and not _engaged:
+    # ── 2. Updates/forums gate: behavioral signals for mass-sent mail ───────
+    if tab in ('updates', 'forums'):
+        if is_important:
+            _pass_reason = 'important'
+        elif _rare:
+            _pass_reason = 'rare_sender'
+        elif _engaged:
+            _pass_reason = 'engaged_sender'
+        elif not _rare and not _engaged:
             return _enrich(_make_noise(email, stage='updates_noise'))
 
-    # ── 4. Structural classifier: clear data patterns (no AI needed) ────────
-    structural = _structural_classify(email)
-    if structural is not None:
-        return _enrich(structural)
-
-    # ── 5. AI classification (optional) or unclassified fallback ────────────
+    # ── 3. Pool it — AI classification or uncategorized ────────────────────
+    if _pass_reason is None:
+        _pass_reason = 'no_gate'
     if client is None:
-        return _enrich(_unclassified_fallback(email, has_unsub, tab, is_important, subject))
+        return _enrich(_make_result(email, 'uncategorized', 'unknown', 0.50, 1, 'evergreen', None, None, stage='unclassified'))
     prompt = f"""You are classifying one email for a personal life OS. Return ONLY a JSON object — no markdown, no extra text.
 
 This email passed structural filters — it likely requires a decision or action from the user.
@@ -581,8 +570,8 @@ urgency_context:
     except Exception:
         pass
 
-    # Groq failed — use signal-based fallback instead of dropping as noise
-    return _enrich(_unclassified_fallback(email, has_unsub, tab, is_important, subject))
+    # Groq failed — pool as uncategorized instead of dropping as noise
+    return _enrich(_make_result(email, 'uncategorized', 'unknown', 0.50, 1, 'evergreen', None, None, stage='unclassified'))
 
 
 _ENGAGEMENT_CACHE_PERSONAL = Path('output/engagement_cache_personal.json')
