@@ -338,14 +338,34 @@ class TestStructuralClassifier(unittest.TestCase):
 
 
 class TestUnclassifiedFallback(unittest.TestCase):
-    """When client=None, ambiguous emails get unclassified fallback."""
+    """When client=None, ambiguous emails get signal-based fallback."""
 
-    def test_primary_no_client_is_unclassified(self):
-        e = _email(gmail_tab='primary')
+    def test_action_subject_gets_consequence_2(self):
+        e = _email(gmail_tab='primary', subject='[Action Required] Submit your form')
         r = _classify_one(e, client=None)
         self.assertEqual(r['_filter_stage'], 'unclassified')
-        self.assertEqual(r['category'], 'task')
         self.assertEqual(r['consequence'], 2)
+
+    def test_newsletter_becomes_record(self):
+        e = _email(gmail_tab='updates', has_list_unsubscribe=True,
+                   subject='Drew This Week - Campus News')
+        r = _classify_one(e, client=None)
+        self.assertEqual(r['_filter_stage'], 'unclassified_newsletter')
+        self.assertEqual(r['consequence'], 1)
+        self.assertEqual(r['category'], 'social')  # record, not task
+        self.assertEqual(r['intent'], 'data')
+
+    def test_important_no_action_gets_consequence_2(self):
+        e = _email(gmail_tab='primary', is_important=True,
+                   subject='Something without action words')
+        r = _classify_one(e, client=None)
+        self.assertEqual(r['consequence'], 2)
+
+    def test_unimportant_no_action_gets_consequence_1(self):
+        e = _email(gmail_tab='primary', is_important=False,
+                   subject='Something without action words')
+        r = _classify_one(e, client=None)
+        self.assertEqual(r['consequence'], 1)
 
     def test_structural_still_works_without_client(self):
         e = _email(subject='Your verification code is 123456')

@@ -516,13 +516,4 @@ def emails_to_items(emails: list[dict], source: str = "gmail_personal") -> list[
         if item:
             items.append(item)
 
-    # Deduplicate by normalised title (catches duplicate digest emails)
-    seen: set[str] = set()
-    deduped: list[Item] = []
-    for item in items:
-        key = re.sub(r"\s+", " ", item.title.lower().strip())[:60]
-        if key not in seen:
-            seen.add(key)
-            deduped.append(item)
-
-    return deduped
+    return items

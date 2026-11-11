@@ -571,7 +571,7 @@ _ENGAGEMENT_CACHE_SCHOOL   = Path('output/engagement_cache_school.json')
 
 
 def classify_emails(emails: list[dict], gmail_services: list | None = None,
-                     use_ai: bool = False) -> list[dict]:
+                     use_ai: bool = False, rebuild: bool = False) -> list[dict]:
     """Classify all emails through the filter pipeline.
 
     Pipeline order:
@@ -611,18 +611,20 @@ def classify_emails(emails: list[dict], gmail_services: list | None = None,
         else:
             print('  note: --ai requested but GROQ_API_KEY not set; using structural only.')
 
-    # Skip emails already in the items pool
-    try:
-        pool_conn = get_db()
-        existing_ids = {
-            row["source_item_id"]
-            for row in pool_conn.execute(
-                "SELECT source_item_id FROM items WHERE source IN ('gmail_personal', 'gmail_school') AND source_item_id IS NOT NULL"
-            ).fetchall()
-        }
-        pool_conn.close()
-    except Exception:
-        existing_ids = set()
+    # Skip emails already in the items pool (unless rebuilding)
+    existing_ids = set()
+    if not rebuild:
+        try:
+            pool_conn = get_db()
+            existing_ids = {
+                row["source_item_id"]
+                for row in pool_conn.execute(
+                    "SELECT source_item_id FROM items WHERE source IN ('gmail_personal', 'gmail_school') AND source_item_id IS NOT NULL"
+                ).fetchall()
+            }
+            pool_conn.close()
+        except Exception:
+            pass
 
     results = []
     skipped = 0
@@ -855,7 +857,7 @@ def route_to_db(email: dict, classification: dict):
 # MAIN
 # ==========================================
 
-async def main(creds: tuple = None, days: int = None, use_ai: bool = False):
+async def main(creds: tuple = None, days: int = None, use_ai: bool = False, rebuild: bool = False):
     email_arg = username_arg = password_arg = None
     if creds:
         email_arg, username_arg, password_arg = creds
@@ -863,10 +865,10 @@ async def main(creds: tuple = None, days: int = None, use_ai: bool = False):
     # ── Date window + email cap prompts ───────────────────
     if days is None:
         print('─' * 60)
-        raw = input('Fetch window — 1, 7, or 30 days? [7] ').strip()
-        days = int(raw) if raw in ('1', '7', '30') else 7
+        raw = input('Fetch window in days (1-365)? [7] ').strip()
+        days = min(365, max(1, int(raw))) if raw.isdigit() else 7
         raw2 = input('Max emails? [all] ').strip()
-        max_emails = int(raw2) if raw2.isdigit() else 500
+        max_emails = int(raw2) if raw2.isdigit() else 1000
     else:
         max_emails = 30
     print(f'  Fetching last {days} day(s), up to {max_emails} emails.')
@@ -933,7 +935,7 @@ async def main(creds: tuple = None, days: int = None, use_ai: bool = False):
 
     category_counts = {}
 
-    results = classify_emails(all_emails, gmail_services=gmail_services, use_ai=use_ai)
+    results = classify_emails(all_emails, gmail_services=gmail_services, use_ai=use_ai, rebuild=rebuild)
     for r in results:
         route_to_db(r, r)
         cat = r['category']
@@ -1073,5 +1075,6 @@ if __name__ == '__main__':
     import argparse as _ap
     _parser = _ap.ArgumentParser(description='Gmail intake for Formal')
     _parser.add_argument('--ai', action='store_true', help='Use Groq AI for classification')
+    _parser.add_argument('--rebuild', action='store_true', help='Re-classify all emails (ignore pool cache)')
     _args = _parser.parse_args()
-    asyncio.run(main(use_ai=_args.ai))
+    asyncio.run(main(use_ai=_args.ai, rebuild=_args.rebuild))
