@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from apps.gmail.gmail_scraper import (
     _classify_one,
     _is_low_engagement,
+    _is_low_engagement_at_threshold,
     _is_rare_sender,
     _make_noise,
     _make_record,
@@ -50,18 +51,52 @@ def _mock_client():
     return client
 
 
-class TestTabAutoNoise(unittest.TestCase):
-    """1. Promotions/social → noise."""
+class TestPromoSocialGate(unittest.TestCase):
+    """1. Promotions/social → engagement-based gate."""
 
-    def test_promotions_dropped(self):
+    def _low_eng(self):
+        return {'replied_domains': set(), 'opened_domains': {}}
+
+    def _high_eng(self, domain='example.com'):
+        return {'replied_domains': set(), 'opened_domains': {domain: 5}}
+
+    def test_promotions_low_engagement_dropped(self):
         e = _email(gmail_tab='promotions')
-        r = _classify_one(e, _mock_client())
+        r = _classify_one(e, _mock_client(), engagement_index=self._low_eng())
         self.assertEqual(r['category'], 'noise')
         self.assertEqual(r['_filter_stage'], 'tab_noise')
 
-    def test_social_dropped(self):
+    def test_social_low_engagement_dropped(self):
         e = _email(gmail_tab='social')
-        r = _classify_one(e, _mock_client())
+        r = _classify_one(e, _mock_client(), engagement_index=self._low_eng())
+        self.assertEqual(r['_filter_stage'], 'tab_noise')
+
+    def test_promotions_engaged_passes(self):
+        e = _email(gmail_tab='promotions')
+        r = _classify_one(e, _mock_client(), engagement_index=self._high_eng())
+        self.assertNotEqual(r['_filter_stage'], 'tab_noise')
+
+    def test_social_engaged_passes(self):
+        e = _email(gmail_tab='social')
+        r = _classify_one(e, _mock_client(), engagement_index=self._high_eng())
+        self.assertNotEqual(r['_filter_stage'], 'tab_noise')
+
+    def test_promotions_important_passes(self):
+        e = _email(gmail_tab='promotions', is_important=True)
+        r = _classify_one(e, _mock_client(), engagement_index=self._low_eng())
+        self.assertNotEqual(r['_filter_stage'], 'tab_noise')
+
+    def test_promotions_replied_passes(self):
+        e = _email(gmail_tab='promotions')
+        eng = {'replied_domains': {'example.com'}, 'opened_domains': {}}
+        r = _classify_one(e, _mock_client(), engagement_index=eng)
+        self.assertNotEqual(r['_filter_stage'], 'tab_noise')
+
+    def test_promotions_below_threshold_dropped(self):
+        """4 opened emails is below the ≥5 threshold."""
+        e = _email(gmail_tab='promotions')
+        eng = {'replied_domains': set(), 'opened_domains': {'example.com': 4}}
+        r = _classify_one(e, _mock_client(), engagement_index=eng)
         self.assertEqual(r['_filter_stage'], 'tab_noise')
 
 class TestForumsGate(unittest.TestCase):
@@ -104,7 +139,7 @@ class TestListUnsubscribeRecord(unittest.TestCase):
         e = _email(has_list_unsubscribe=False, subject='You spent $6.30 at NJ Transit')
         r = _classify_one(e, _mock_client())
         self.assertEqual(r['_filter_stage'], 'record')
-        self.assertEqual(r['category'], 'identity')
+        self.assertEqual(r['category'], 'uncategorized')
         self.assertEqual(r['intent'], 'data')
 
     def test_no_unsubscribe_extracts_amounts(self):
@@ -277,44 +312,44 @@ class TestEngagementEdgeCases(unittest.TestCase):
 class TestStructuralClassifier(unittest.TestCase):
     """Layer 1: structural regex classification before Groq."""
 
-    def test_completed_subject_becomes_logistics(self):
+    def test_completed_subject_detected(self):
         e = _email(subject='Scheduled System Maintenance - COMPLETE')
         r = _structural_classify(e)
         self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'logistics')
+        self.assertEqual(r['category'], 'uncategorized')
         self.assertEqual(r['_filter_stage'], 'structural')
 
-    def test_status_update_becomes_logistics(self):
+    def test_status_update_detected(self):
         e = _email(subject='Systems Currently Unavailable',
                    body='Our systems are currently experiencing downtime.')
         r = _structural_classify(e)
         self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'logistics')
+        self.assertEqual(r['category'], 'uncategorized')
 
-    def test_confirmation_becomes_identity(self):
+    def test_confirmation_detected(self):
         e = _email(subject='Thank you for registering!',
                    body='Welcome to our platform.')
         r = _structural_classify(e)
         self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'identity')
+        self.assertEqual(r['category'], 'uncategorized')
 
-    def test_otp_becomes_identity(self):
+    def test_otp_detected(self):
         e = _email(subject='Your verification code is 123456')
         r = _structural_classify(e)
         self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'identity')
+        self.assertEqual(r['category'], 'uncategorized')
 
-    def test_deposit_becomes_financial(self):
+    def test_deposit_detected(self):
         e = _email(subject='Your payment will be deposited today')
         r = _structural_classify(e)
         self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'financial')
+        self.assertEqual(r['category'], 'uncategorized')
 
-    def test_delivery_becomes_logistics(self):
+    def test_delivery_detected(self):
         e = _email(subject='Your order is here!')
         r = _structural_classify(e)
         self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'logistics')
+        self.assertEqual(r['category'], 'uncategorized')
 
     def test_ambiguous_returns_none(self):
         """Emails without clear structural signals go to Groq."""
@@ -334,7 +369,7 @@ class TestStructuralClassifier(unittest.TestCase):
                    gmail_tab='forums', is_important=True)
         r = _classify_one(e, _mock_client())
         self.assertEqual(r['_filter_stage'], 'structural')
-        self.assertEqual(r['category'], 'logistics')
+        self.assertEqual(r['category'], 'uncategorized')
 
 
 class TestUnclassifiedFallback(unittest.TestCase):
@@ -352,7 +387,7 @@ class TestUnclassifiedFallback(unittest.TestCase):
         r = _classify_one(e, client=None)
         self.assertEqual(r['_filter_stage'], 'unclassified_newsletter')
         self.assertEqual(r['consequence'], 1)
-        self.assertEqual(r['category'], 'social')  # record, not task
+        self.assertEqual(r['category'], 'uncategorized')
         self.assertEqual(r['intent'], 'data')
 
     def test_important_no_action_gets_consequence_2(self):
@@ -379,8 +414,18 @@ class TestUnclassifiedFallback(unittest.TestCase):
 
     def test_tab_noise_still_works_without_client(self):
         e = _email(gmail_tab='promotions')
-        r = _classify_one(e, client=None)
+        eng = {'replied_domains': set(), 'opened_domains': {}}
+        r = _classify_one(e, client=None, engagement_index=eng)
         self.assertEqual(r['_filter_stage'], 'tab_noise')
+
+    def test_promotions_newsletter_becomes_record(self):
+        e = _email(gmail_tab='promotions', has_list_unsubscribe=True,
+                   subject='Weekly deals from LinkedIn')
+        eng = {'replied_domains': set(), 'opened_domains': {'example.com': 10}}
+        r = _classify_one(e, client=None, engagement_index=eng)
+        self.assertEqual(r['_filter_stage'], 'unclassified_newsletter')
+        self.assertEqual(r['category'], 'uncategorized')
+        self.assertEqual(r['intent'], 'data')
 
 
 class TestEnrichmentFields(unittest.TestCase):
@@ -401,7 +446,8 @@ class TestEnrichmentFields(unittest.TestCase):
 
     def test_enrichment_on_noise(self):
         e = _email(gmail_tab='promotions')
-        r = _classify_one(e, client=None)
+        eng = {'replied_domains': set(), 'opened_domains': {}}
+        r = _classify_one(e, client=None, engagement_index=eng)
         self.assertIn('_sender_domain', r)
 
     def test_enrichment_on_structural(self):

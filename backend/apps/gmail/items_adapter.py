@@ -14,7 +14,7 @@ def _sender_domain(address: str) -> str:
     return m.group(1).lower() if m else address.lower().strip()
 
 ACTION_CATEGORIES = {"task", "event", "opportunity"}
-DATA_CATEGORIES   = {"financial", "academic", "logistics", "identity", "social"}
+DATA_CATEGORIES   = {"financial", "academic", "logistics", "identity", "social", "uncategorized"}
 
 # Maps Groq data category directly to record_type string
 _DATA_RECORD_TYPE = {

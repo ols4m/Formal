@@ -83,15 +83,16 @@ _ACTION_PATTERN = re.compile(
 )
 
 ROUTES = {
-    'task':        ['agenda'],
-    'event':       ['agenda'],
-    'opportunity': ['agenda'],
-    'financial':   ['checkbook'],
-    'academic':    ['gradebook'],
-    'logistics':   [],
-    'identity':    [],
-    'social':      [],
-    'noise':       [],
+    'task':          ['agenda'],
+    'event':         ['agenda'],
+    'opportunity':   ['agenda'],
+    'financial':     ['checkbook'],
+    'academic':      ['gradebook'],
+    'logistics':     [],
+    'identity':      [],
+    'social':        [],
+    'uncategorized': [],
+    'noise':         [],
 }
 
 
@@ -127,8 +128,6 @@ def extract_action_items(body: str) -> list[str]:
 
 
 # ── Groq classifier ───────────────────────────────────────────────────────────
-
-_AUTO_NOISE_TABS = {'promotions', 'social'}
 
 # Subject-line signals that indicate an action even on transactional (no List-Unsubscribe) emails.
 # Prevents the record shortcut from swallowing actionable emails.
@@ -222,7 +221,7 @@ def build_engagement_index(service, cache_path: Path = _ENGAGEMENT_CACHE_PATH) -
     # seen and not immediately archived/trashed — a weak "opened" signal.
     # Exclude promotions/social/forums so opening a Facebook digest to investigate
     # doesn't accidentally credit facebookmail.com.
-    _bulk_exclusion = ' '.join(f'-category:{t}' for t in _AUTO_NOISE_TABS)
+    _bulk_exclusion = ' '.join(f'-category:{t}' for t in ('promotions', 'social', 'forums'))
     try:
         inbox_results = service.users().messages().list(
             userId='me', q=f'in:inbox {_bulk_exclusion}', maxResults=500
@@ -287,6 +286,22 @@ def _is_low_engagement(sender: str, index: dict | None) -> bool:
     return True
 
 
+def _is_low_engagement_at_threshold(sender: str, index: dict | None,
+                                     threshold: int = 5) -> bool:
+    """Like _is_low_engagement but requires ≥threshold opened messages."""
+    if index is None:
+        return False
+    domain = _sender_domain(sender)
+    if not domain:
+        return False
+    if domain in index.get('replied_domains', set()):
+        return False
+    opened = index.get('opened_domains', {})
+    if opened.get(domain, 0) >= threshold:
+        return False
+    return True
+
+
 # ── Sender frequency index ────────────────────────────────────────────────────
 
 _FREQUENCY_THRESHOLD = 2  # domains with ≤ this many emails in history are "rare"
@@ -318,6 +333,8 @@ VALID_CATEGORIES = {
     'task', 'event', 'opportunity',
     # data
     'financial', 'academic', 'logistics', 'identity', 'social',
+    # gate default — labeling deferred to downstream classifier
+    'uncategorized',
     # legacy aliases — remapped at parse time
     'transaction', 'other',
     # discard
@@ -343,7 +360,7 @@ def _make_record(email: dict) -> dict:
     full = email.get('subject', '') + ' ' + body
     return {
         **email,
-        'category': 'identity', 'intent': 'data', 'confidence': 1.0,
+        'category': 'uncategorized', 'intent': 'data', 'confidence': 1.0,
         'consequence': 3, 'urgency_context': 'evergreen',
         'summary': None, 'deadline': None,
         'financial_impact': bool(_FINANCIAL_PATTERN.search(full)),
@@ -390,35 +407,35 @@ def _structural_classify(email: dict) -> dict | None:
 
     # Completed/resolved actions — subject signals it's done
     if _COMPLETED_RE.search(subject):
-        return _make_result(email, 'logistics', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
+        return _make_result(email, 'uncategorized', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
 
     # System status updates — informational, no user action
     if _STATUS_UPDATE_RE.search(combined):
-        return _make_result(email, 'logistics', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
+        return _make_result(email, 'uncategorized', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
 
     # Confirmations/receipts — action already done
     if _CONFIRMATION_RE.search(combined):
-        return _make_result(email, 'identity', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
+        return _make_result(email, 'uncategorized', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
 
     # OTP/verification codes — ephemeral, not actionable
     if _OTP_SUBJECT_RE.search(subject):
-        return _make_result(email, 'identity', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
+        return _make_result(email, 'uncategorized', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
 
     # Academic grade/score notifications
     if _ACADEMIC_RECORD_RE.search(combined):
-        return _make_result(email, 'academic', 'data', 0.90, 2, 'evergreen', None, None, stage='structural')
+        return _make_result(email, 'uncategorized', 'data', 0.90, 2, 'evergreen', None, None, stage='structural')
 
     # Financial deposits/statements — money info, no action
     if _DEPOSIT_RE.search(combined):
-        return _make_result(email, 'financial', 'data', 0.90, 2, 'evergreen', None, None, stage='structural')
+        return _make_result(email, 'uncategorized', 'data', 0.90, 2, 'evergreen', None, None, stage='structural')
 
     # Delivery/shipping updates
     if _DELIVERED_RE.search(subject):
-        return _make_result(email, 'logistics', 'data', 0.90, 1, 'evergreen', None, None, stage='structural')
+        return _make_result(email, 'uncategorized', 'data', 0.90, 1, 'evergreen', None, None, stage='structural')
 
     # Bulk digests/newsletters
     if _BULK_DIGEST_RE.search(combined):
-        return _make_result(email, 'social', 'data', 0.85, 1, 'evergreen', None, None, stage='structural')
+        return _make_result(email, 'uncategorized', 'data', 0.85, 1, 'evergreen', None, None, stage='structural')
 
     return None  # ambiguous — needs Groq
 
@@ -427,12 +444,12 @@ def _unclassified_fallback(email: dict, has_unsub: bool, tab: str,
                            is_important: bool, subject: str) -> dict:
     """Signal-based fallback when AI classification is unavailable or fails."""
     if _SUBJECT_ACTION_RE.search(subject):
-        cat, intent, cons, stage = 'task', 'action', 2, 'unclassified'
-    elif has_unsub and tab in ('updates', 'forums'):
-        cat, intent, cons, stage = 'social', 'data', 1, 'unclassified_newsletter'
+        cat, intent, cons, stage = 'uncategorized', 'action', 2, 'unclassified'
+    elif has_unsub and tab in ('updates', 'forums', 'promotions', 'social'):
+        cat, intent, cons, stage = 'uncategorized', 'data', 1, 'unclassified_newsletter'
     else:
         cons  = 2 if is_important else 1
-        cat, intent, stage = 'task', 'action', 'unclassified'
+        cat, intent, stage = 'uncategorized', 'action', 'unclassified'
     return _make_result(
         email, cat, intent, 0.50, cons, 'evergreen',
         None, None, stage=stage,
@@ -445,7 +462,7 @@ def _classify_one(email: dict, client=None,
     """Classify a single email through the filter pipeline.
 
     Pipeline (first match wins):
-      1. Tab auto-noise    — promotions/social → dropped
+      1. Tab gate           — promotions/social with low engagement → dropped
       2. No List-Unsubscribe → personal record → items pool (skip Groq)
       3. Updates/forums gate — behavioral signals → dropped
       4. Structural regex   — clear data patterns → record (skip Groq)
@@ -469,9 +486,12 @@ def _classify_one(email: dict, client=None,
         result['_sender_domain']  = _domain
         return result
 
-    # ── 1. Tab auto-noise: promotions/social ───────────────────────────────
-    if tab in _AUTO_NOISE_TABS:
-        return _enrich(_make_noise(email, stage='tab_noise'))
+    is_important = email.get('is_important', False)
+
+    # ── 1. Tab gate: promotions/social → engagement check ────────────────
+    if tab in ('promotions', 'social'):
+        if not is_important and _is_low_engagement_at_threshold(sender, engagement_index):
+            return _enrich(_make_noise(email, stage='tab_noise'))
 
     # ── 2. No List-Unsubscribe → 1:1 personal record (skip Groq) ────────────
     has_unsub = email.get('has_list_unsubscribe', True)
@@ -479,7 +499,6 @@ def _classify_one(email: dict, client=None,
         return _enrich(_make_record(email))
 
     # ── 3. Updates/forums gate: behavioral signals for mass-sent mail ───────
-    is_important = email.get('is_important', False)
     if tab in ('updates', 'forums') and not is_important:
         if not _rare and not _engaged:
             return _enrich(_make_noise(email, stage='updates_noise'))
