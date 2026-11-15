@@ -109,23 +109,32 @@ def show_ranked(repo: ItemRepository, show_all: bool = False) -> None:
 
 # ── Status subcommands ────────────────────────────────────────────────────────
 
-def _get_title(repo: ItemRepository, item_id: str) -> str | None:
-    row = repo._connection.execute(
-        "SELECT title FROM items WHERE id=?", (item_id,)
-    ).fetchone()
-    return row["title"] if row else None
+def _resolve(repo: ItemRepository, id_or_prefix: str) -> tuple[str | None, str | None]:
+    """Resolve a full item ID or the short ID this view prints (a unique prefix)."""
+    rows = repo._connection.execute(
+        "SELECT id, title FROM items WHERE id = ? OR id LIKE ? LIMIT 2",
+        (id_or_prefix, id_or_prefix.replace("%", "").replace("_", "") + "%"),
+    ).fetchall()
+    exact = [r for r in rows if r["id"] == id_or_prefix]
+    if exact:
+        return exact[0]["id"], exact[0]["title"]
+    if len(rows) == 1:
+        return rows[0]["id"], rows[0]["title"]
+    if len(rows) > 1:
+        print(f"  Ambiguous ID {id_or_prefix!r}: use more characters.")
+    return None, None
 
 
 def cmd_done(repo: ItemRepository, args: list[str]) -> None:
     if not args:
         print("  Usage: ranked_items.py done <item-id>")
         sys.exit(1)
-    item_id = args[0]
-    title = _get_title(repo, item_id)
+    item_id, title = _resolve(repo, args[0])
     if title is None:
-        print(f"  Item not found: {item_id}")
+        print(f"  Item not found: {args[0]}")
         sys.exit(1)
     repo.update_status(item_id, "done")
+    repo.record_sender_feedback(item_id, "done")
     print(f"  [done] {title}")
 
 
@@ -133,7 +142,7 @@ def cmd_defer(repo: ItemRepository, args: list[str]) -> None:
     if len(args) < 2:
         print("  Usage: ranked_items.py defer <item-id> <days>")
         sys.exit(1)
-    item_id, days_str = args[0], args[1]
+    days_str = args[1]
     try:
         days = int(days_str)
         if days <= 0:
@@ -141,9 +150,9 @@ def cmd_defer(repo: ItemRepository, args: list[str]) -> None:
     except ValueError:
         print(f"  defer: <days> must be a positive integer, got {days_str!r}")
         sys.exit(1)
-    title = _get_title(repo, item_id)
+    item_id, title = _resolve(repo, args[0])
     if title is None:
-        print(f"  Item not found: {item_id}")
+        print(f"  Item not found: {args[0]}")
         sys.exit(1)
     defer_until = (
         datetime.now(timezone.utc) + timedelta(days=days)
@@ -156,12 +165,12 @@ def cmd_dismiss(repo: ItemRepository, args: list[str]) -> None:
     if not args:
         print("  Usage: ranked_items.py dismiss <item-id>")
         sys.exit(1)
-    item_id = args[0]
-    title = _get_title(repo, item_id)
+    item_id, title = _resolve(repo, args[0])
     if title is None:
-        print(f"  Item not found: {item_id}")
+        print(f"  Item not found: {args[0]}")
         sys.exit(1)
     repo.update_status(item_id, "archived")
+    repo.record_sender_feedback(item_id, "dismiss")
     print(f"  [dismissed] {title}")
 
 

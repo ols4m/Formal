@@ -181,6 +181,35 @@ class ItemRepository:
         ]
 
 
+    def record_sender_feedback(self, item_id: str, outcome: str) -> bool:
+        """Count a done or dismiss against the item's sender.
+
+        Reads raw_payload["sender_domain"] (set by source adapters) and bumps
+        sender_reputation, which ranking and intake filters read. Returns False
+        when the item is missing or has no sender.
+        """
+        column = {"done": "done_count", "dismiss": "dismiss_count"}.get(outcome)
+        if column is None:
+            raise ValueError(f"Invalid feedback outcome: {outcome!r}")
+        row = self._connection.execute(
+            "SELECT raw_payload FROM items WHERE id = ?", (item_id,)
+        ).fetchone()
+        if row is None:
+            return False
+        domain = (json.loads(row["raw_payload"] or "{}") or {}).get("sender_domain")
+        if not domain:
+            return False
+        now = _utc_now()
+        with self._connection:
+            self._connection.execute(
+                f"""INSERT INTO sender_reputation (domain, {column}, updated_at)
+                    VALUES (?, 1, ?)
+                    ON CONFLICT(domain) DO UPDATE SET
+                        {column} = {column} + 1, updated_at = excluded.updated_at""",
+                (domain, now),
+            )
+        return True
+
     def update_status(
         self, item_id: str, status: str, defer_until: str | None = None
     ) -> bool:

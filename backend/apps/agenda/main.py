@@ -4,16 +4,18 @@ Reads open tasks and events from the items pool, scores them with the Priority E
 and prints a ranked list.
 
 Run: python apps/agenda/main.py
-     python apps/agenda/main.py --all        (include done/archived)
-     python apps/agenda/main.py --done ID    (mark an item done)
-     python apps/agenda/main.py --dismiss ID (dismiss an item)
+     python apps/agenda/main.py --all        (include C/D tiers)
+     python apps/agenda/main.py --done N     (mark row N or an item ID done)
+     python apps/agenda/main.py --dismiss N  (dismiss row N or an item ID)
+
+Row numbers mean the same thing in the default view and in --all.
 """
 
 import sys
 import json
 import argparse
 from pathlib import Path
-from datetime import date, datetime, timezone
+from datetime import date
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.db import get_db, init_db
@@ -25,12 +27,13 @@ TIER_LABEL = {"S": "S", "A": "A", "B": "B", "C": "C", "D": "D"}
 W = 80
 
 
-def _load_open_items(repo, show_all=False, conn=None):
-    """Load items from the pool and score them."""
-    if show_all:
-        rows = repo.list_items(status=None, limit=200)
-    else:
-        rows = repo.list_items(status="open", limit=200)
+def _load_open_items(repo, conn=None):
+    """Load open items from the pool and score them, highest first.
+
+    Both views and row-number lookups use this one list, so row N always
+    points at the same item.
+    """
+    rows = repo.list_items(status="open", limit=200)
 
     # Only tasks and events for the agenda
     rows = [r for r in rows if r["item_type"] in ("task", "event")]
@@ -59,7 +62,7 @@ def print_agenda(show_all=False):
     archived = repo.archive_past_items()
     if archived:
         print(f"  Archived {archived} past item(s).")
-    scored = _load_open_items(repo, show_all, conn=conn)
+    scored = _load_open_items(repo, conn=conn)
 
     # Default view: S/A/B tier only (actionable items)
     if not show_all:
@@ -108,69 +111,40 @@ def _resolve_item_id(item_id, conn):
     if item_id.isdigit():
         idx = int(item_id) - 1
         repo = ItemRepository(connection=conn)
-        scored = _load_open_items(repo, show_all=False, conn=conn)
+        scored = _load_open_items(repo, conn=conn)
         if 0 <= idx < len(scored):
             item = scored[idx][0]
             return item.id, item.title, item.raw_payload
     return None, None, None
 
 
-def _update_sender_reputation(conn, payload, column):
-    """Increment done_count or dismiss_count for the sender domain."""
-    domain = (payload or {}).get("sender_domain")
-    if not domain:
+def _apply_feedback(item_id, status, outcome, label):
+    """Set an item's status and record the outcome against its sender."""
+    init_db()
+    conn = get_db()
+    real_id, title, _payload = _resolve_item_id(item_id, conn)
+    if real_id is None:
+        print(f"  Item {item_id} not found.")
+        conn.close()
         return
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(f"""
-        INSERT INTO sender_reputation (domain, {column}, updated_at)
-        VALUES (?, 1, ?)
-        ON CONFLICT(domain) DO UPDATE SET
-            {column} = {column} + 1,
-            updated_at = ?
-    """, (domain, now, now))
+    repo = ItemRepository(connection=conn)
+    repo.update_status(real_id, status)
+    repo.record_sender_feedback(real_id, outcome)
+    print(f"  {label}: {title[:60]}")
+    conn.close()
 
 
 def mark_done(item_id):
-    init_db()
-    conn = get_db()
-    now = datetime.now(timezone.utc).isoformat()
-    real_id, title, payload = _resolve_item_id(item_id, conn)
-    if real_id is None:
-        print(f"  Item {item_id} not found.")
-        conn.close()
-        return
-    with conn:
-        conn.execute(
-            "UPDATE items SET status = 'done', updated_at = ? WHERE id = ?",
-            (now, real_id),
-        )
-        _update_sender_reputation(conn, payload, "done_count")
-    print(f"  Done: {title[:60]}")
-    conn.close()
+    _apply_feedback(item_id, "done", "done", "Done")
 
 
 def mark_dismissed(item_id):
-    init_db()
-    conn = get_db()
-    now = datetime.now(timezone.utc).isoformat()
-    real_id, title, payload = _resolve_item_id(item_id, conn)
-    if real_id is None:
-        print(f"  Item {item_id} not found.")
-        conn.close()
-        return
-    with conn:
-        conn.execute(
-            "UPDATE items SET status = 'archived', updated_at = ? WHERE id = ?",
-            (now, real_id),
-        )
-        _update_sender_reputation(conn, payload, "dismiss_count")
-    print(f"  Dismissed: {title[:60]}")
-    conn.close()
+    _apply_feedback(item_id, "archived", "dismiss", "Dismissed")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="The Agenda — ranked task list from the items pool")
-    parser.add_argument("--all", action="store_true", help="Include done/archived items and all tiers")
+    parser.add_argument("--all", action="store_true", help="Include C/D tier items")
     parser.add_argument("--done", metavar="ID", help="Mark an item done (by ID or row number)")
     parser.add_argument("--dismiss", metavar="ID", help="Dismiss an item (archive + record sender reputation)")
     args = parser.parse_args()
