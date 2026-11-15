@@ -1,14 +1,12 @@
 """Show the ranked item pool — run from backend/.
 
     python apps/agenda/ranked_items.py              # show open ranked items
-    python apps/agenda/ranked_items.py --ingest     # re-ingest emails.json first
     python apps/agenda/ranked_items.py all          # include D-tier items
     python apps/agenda/ranked_items.py done   <id>  # mark item done
     python apps/agenda/ranked_items.py defer  <id> <days>  # defer N days
     python apps/agenda/ranked_items.py dismiss <id> # archive (remove from view)
 """
 
-import json
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -37,24 +35,6 @@ _URGENCY_CONTEXT_LABEL = {
     "available_window": "[window open]",
     "hard_deadline":    "[hard deadline]",
 }
-
-
-def ingest_emails(repo: ItemRepository) -> int:
-    from apps.gmail.items_adapter import emails_to_items
-    emails_path = BACKEND / "backend" / "output" / "emails.json"
-    if not emails_path.exists():
-        emails_path = BACKEND / "output" / "emails.json"
-    with emails_path.open() as f:
-        data = json.load(f)
-    emails = data.get("emails", []) if isinstance(data, dict) else data
-    items = emails_to_items(emails)
-    # Clear stale gmail action items before re-ingesting so old IDs don't linger
-    repo._connection.execute(
-        "DELETE FROM items WHERE source = 'gmail_personal' AND item_type != 'record'"
-    )
-    count = repo.upsert(items)
-    print(f"  Ingested {count} item(s) from emails.json ({len(items)} unique actions)\n")
-    return count
 
 
 def show_ranked(repo: ItemRepository, show_all: bool = False) -> None:
@@ -198,8 +178,6 @@ def main() -> None:
         if args and args[0] in _STATUS_CMDS:
             _STATUS_CMDS[args[0]](repo, args[1:])
         else:
-            if "--ingest" in args:
-                ingest_emails(repo)
             show_ranked(repo, show_all=("all" in args or "--all" in args))
     finally:
         repo.close()
