@@ -121,6 +121,63 @@ class TestGoldenPath(unittest.TestCase):
         self.assertEqual(self.items["welcome-action"].item_type, "task")
 
 
+class TestInferredDeadline(unittest.TestCase):
+    """The 3-day fallback date is gated on structure (bulk vs sent to you), not wording."""
+
+    def _due(self, *emails):
+        return _parse_due_at(list(emails), now=NOW)
+
+    def test_direct_request_gets_three_days(self):
+        due = self._due(_email("p", "Availability", "Please respond with your availability."))
+        self.assertTrue(due.startswith("2026-11-18"))
+
+    def test_list_unsubscribe_request_gets_none(self):
+        e = _email("b", "Action required: update your preferences", "Tap to update.",
+                   has_list_unsubscribe=True, gmail_tab="updates")
+        self.assertIsNone(self._due(e))
+
+    def test_promotions_tab_request_gets_none(self):
+        e = _email("b", "Action required: claim your reward", "", gmail_tab="promotions")
+        self.assertIsNone(self._due(e))
+
+    def test_important_bulk_request_keeps_date(self):
+        e = _email("i", "Did you send $250?", "Please verify the charge in the app.",
+                   has_list_unsubscribe=True, gmail_tab="updates", is_important=True)
+        self.assertTrue(self._due(e).startswith("2026-11-18"))
+
+    def test_bulk_auto_ack_does_not_cancel_human_request(self):
+        ack = _email("t1", "Ticket #123456 received", "We got your request.",
+                     has_list_unsubscribe=True, gmail_tab="updates")
+        human = _email("t2", "Re: Ticket #123456", "Please confirm your shipping address.")
+        self.assertTrue(self._due(ack, human).startswith("2026-11-18"))
+
+    def test_stated_date_wins_even_for_bulk(self):
+        e = _email("d", "Action required by Dec 3", "", has_list_unsubscribe=True)
+        self.assertTrue(self._due(e).startswith("2026-12-03"))
+
+    def test_facebook_request_wording_still_gets_no_date(self):
+        items = _pipeline([_email(
+            "fbreq", "Your Page has new messages",
+            "Please respond to messages from your Page visitors.",
+            **{"from": "Facebook <notification@facebookmail.com>", "gmail_tab": "social",
+               "has_list_unsubscribe": True},
+        )])
+        fb = items["fbreq"]
+        self.assertIsNone(fb.due_at)
+        self.assertTrue(fb.raw_payload["bulk"])
+        self.assertFalse(fb.raw_payload["due_inferred"])
+        self.assertNotIn(score_item(fb)["tier"], ("S", "A"))
+
+    def test_fraud_check_keeps_inferred_date(self):
+        items = _pipeline([_email("fr", "Did you make this purchase?",
+                                  "Please verify the charge of $910.00 on your card.")])
+        fraud = items["fr"]
+        self.assertEqual(fraud.item_type, "task")
+        self.assertIsNotNone(fraud.due_at)
+        self.assertTrue(fraud.raw_payload["due_inferred"])
+        self.assertFalse(fraud.raw_payload["bulk"])
+
+
 class TestOrderGrouping(unittest.TestCase):
     def test_in_order_to_does_not_group(self):
         self.assertIsNone(_extract_action_key(_email("a", "Read this", "in order to register, log in")))

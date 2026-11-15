@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from apps.gmail.gmail_scraper import (
     _build_frequency_index,
     _classify_one,
+    _header_signals,
+    _headers_by_name,
     _is_low_engagement,
     _is_low_engagement_at_threshold,
     _is_rare_sender,
@@ -468,6 +470,33 @@ class TestEngagementCache(unittest.TestCase):
                 svc.users.assert_not_called()
                 build_engagement_index(svc, cache_path=cache, rebuild=True)
                 svc.users.assert_called()
+
+
+class TestHeaderSignals(unittest.TestCase):
+    """Header names are case-insensitive; senders vary them."""
+
+    def test_odd_casing_is_still_detected(self):
+        headers = _headers_by_name([
+            {'name': 'SUBJECT', 'value': 'Hello'},
+            {'name': 'List-unsubscribe', 'value': '<mailto:unsub@example.com>'},
+            {'name': 'List-ID', 'value': 'owner/repo <repo.owner.example.com>'},
+            {'name': 'Auto-Submitted', 'value': 'Auto-Generated'},
+        ])
+        self.assertEqual(headers['subject'], 'Hello')
+        self.assertEqual(_header_signals(headers), {
+            'has_list_unsubscribe': True,
+            'has_list_id': True,
+            'auto_submitted': 'auto-generated',
+            'precedence': None,
+        })
+
+    def test_plain_personal_mail_has_no_bulk_signals(self):
+        signals = _header_signals(_headers_by_name([{'name': 'From', 'value': 'a@example.com'}]))
+        self.assertFalse(signals['has_list_unsubscribe'])
+        self.assertIsNone(signals['auto_submitted'])
+
+    def test_missing_headers_list(self):
+        self.assertEqual(_headers_by_name(None), {})
 
 
 class TestPipelineSummary(unittest.TestCase):

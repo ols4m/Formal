@@ -118,6 +118,21 @@ _RESPONSE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Gmail tabs that hold broadcast mail (forums is mostly mailing lists, which
+# List-Unsubscribe already marks)
+_MASS_MAIL_TABS = {"promotions", "social"}
+
+
+def _asks_for_response(email: dict) -> bool:
+    """Content check: does this email's wording ask for a response or action?"""
+    return bool(_RESPONSE_RE.search(email.get("subject", "") + " " + (email.get("body") or "")[:300]))
+
+
+def _is_bulk(email: dict) -> bool:
+    """Structural check: was this sent as a broadcast (List-Unsubscribe header,
+    or filed by Gmail under Promotions/Social)? Missing fields count as not bulk."""
+    return bool(email.get("has_list_unsubscribe")) or email.get("gmail_tab") in _MASS_MAIL_TABS
+
 # High-stakes actions that just became available — no explicit deadline yet
 _HIGH_STAKES_AVAILABLE_RE = re.compile(
     r"\b(is now (available|open|live|accepting)|"
@@ -190,6 +205,27 @@ def _dated(month: int, day: int, reference: datetime) -> str | None:
 
 
 def _parse_due_at(emails: list[dict], now: datetime | None = None) -> str | None:
+    """Due date for an email group: a date it states, else an inferred one."""
+    return _explicit_due_at(emails, now) or _inferred_due_at(emails, now)
+
+
+def _inferred_due_at(emails: list[dict], now: datetime | None = None) -> str | None:
+    """Assume 3 days when a single email asks for a response and is either sent
+    to you directly (not bulk) or marked Important by Gmail.
+
+    The bulk check is structural, so broadcast notifications and marketing never
+    get an invented deadline whatever their wording. Each email is checked on its
+    own, so an automated message in the same thread can't cancel a person's request.
+    """
+    today = now or datetime.now(timezone.utc)
+    if any(_asks_for_response(e) and (e.get("is_important") or not _is_bulk(e)) for e in emails):
+        due = (today + timedelta(days=3)).replace(hour=23, minute=59, second=0, microsecond=0)
+        return due.isoformat().replace("+00:00", "Z")
+    return None
+
+
+def _explicit_due_at(emails: list[dict], now: datetime | None = None) -> str | None:
+    """A due date the emails actually state ('due tomorrow', 'Dec 1', '12/1')."""
     today = now or datetime.now(timezone.utc)
     reference = _email_sent_at(emails) or today
     combined = " ".join(
@@ -222,15 +258,6 @@ def _parse_due_at(emails: list[dict], now: datetime | None = None) -> str | None
             due = _dated(month, day, reference)
             if due:
                 return due
-
-    # Implicit urgency: if a response is required and no date found, assume 3 days
-    requires_response = any(
-        _RESPONSE_RE.search(e.get("subject", "") + " " + e.get("body", "")[:300])
-        for e in emails
-    )
-    if requires_response:
-        due = (today + timedelta(days=3)).replace(hour=23, minute=59, second=0, microsecond=0)
-        return due.isoformat().replace("+00:00", "Z")
 
     return None
 
@@ -318,10 +345,9 @@ def _record_type(emails: list[dict], category: str) -> str | None:
     combined_body    = " ".join(e.get("body", "")[:400] for e in emails)
     combined_all     = combined_subject + " " + combined_body
 
-    requires_response = any(
-        _RESPONSE_RE.search(e.get("subject", "") + " " + e.get("body", "")[:300])
-        for e in emails
-    )
+    # Content-only on purpose: any request wording keeps mail actionable, so a
+    # fraud check ("please verify the charge") is never archived as a record.
+    requires_response = any(_asks_for_response(e) for e in emails)
 
     # Identity — OTPs and account-verification codes (subject-only to avoid false positives)
     if _OTP_SUBJECT_RE.search(combined_subject):
@@ -384,7 +410,7 @@ def _derive_consequence(emails: list[dict], category: str) -> int:
     subjects = " ".join(e.get("subject", "") for e in emails)
     if re.search(r'\b(required|mandatory|must)\b', subjects, re.IGNORECASE):
         score += 1
-    if _RESPONSE_RE.search(combined):
+    if any(_asks_for_response(e) for e in emails):
         score += 1
     if any(e.get("action_items") for e in emails):
         score += 1
@@ -483,6 +509,7 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
                 "engaged_sender":  any(e.get("_engaged_sender") for e in emails),
                 "rare_sender":     any(e.get("_rare_sender") for e in emails),
                 "pass_reason":     emails[-1].get("_pass_reason"),
+                "bulk":            any(_is_bulk(e) for e in emails),
             },
         )
 
@@ -496,7 +523,8 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
     )[:500] or None
 
     item_type = "event" if category == "event" else "task"
-    due_at = _parse_due_at(emails)
+    explicit_due = _explicit_due_at(emails)
+    due_at = explicit_due or _inferred_due_at(emails)
     has_action_items = any(e.get("action_items") for e in emails)
 
     # Derive urgency_context structurally
@@ -531,6 +559,8 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
             "rare_sender":     any(e.get("_rare_sender") for e in emails),
             "has_action_items": has_action_items,
             "pass_reason":     emails[-1].get("_pass_reason"),
+            "bulk":            any(_is_bulk(e) for e in emails),
+            "due_inferred":    due_at is not None and explicit_due is None,
         },
     )
 

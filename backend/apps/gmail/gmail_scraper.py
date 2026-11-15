@@ -697,6 +697,29 @@ async def scrape_school_gmail(page: Page, email: str, username: str, password: s
 # PERSONAL EMAIL — Gmail API backend
 # ==========================================
 
+def _headers_by_name(raw_headers: list[dict] | None) -> dict[str, str]:
+    """Header name -> value with lowercased names.
+
+    Header names are case-insensitive and real senders vary them
+    ('List-unsubscribe', 'List-ID'), so every lookup uses lowercase keys.
+    """
+    return {(h.get('name') or '').lower(): h.get('value') or '' for h in raw_headers or []}
+
+
+def _header_signals(headers: dict[str, str]) -> dict:
+    """Structural signals kept on each email (headers must come from _headers_by_name).
+
+    has_list_unsubscribe is used downstream; the others are recorded only, so they
+    can be measured on real mail before any rule depends on them.
+    """
+    return {
+        'has_list_unsubscribe': 'list-unsubscribe' in headers,
+        'has_list_id':          'list-id' in headers,
+        'auto_submitted':       headers.get('auto-submitted', '').strip().lower() or None,
+        'precedence':           headers.get('precedence', '').strip().lower() or None,
+    }
+
+
 def scrape_gmail_api(max_results: int = 200, days: int = 7,
                      token_path: Path = TOKEN_PATH,
                      source: str = 'personal') -> tuple[list, object | None]:
@@ -756,10 +779,10 @@ def scrape_gmail_api(max_results: int = 200, days: int = 7,
     for msg in messages:
         try:
             full    = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
-            headers = {h['name']: h['value'] for h in full['payload']['headers']}
-            subject = headers.get('Subject', '')
-            sender  = headers.get('From', '')
-            date_str = headers.get('Date', '')
+            headers = _headers_by_name(full['payload'].get('headers'))
+            subject = headers.get('subject', '')
+            sender  = headers.get('from', '')
+            date_str = headers.get('date', '')
 
             def _extract_body(part):
                 """Recursively find the first text/plain part."""
@@ -793,7 +816,7 @@ def scrape_gmail_api(max_results: int = 200, days: int = 7,
                 'source':     source,
                 'gmail_tab':  gmail_tab,
                 'is_important': 'IMPORTANT' in label_ids,
-                'has_list_unsubscribe': 'List-Unsubscribe' in headers,
+                **_header_signals(headers),
             })
         except Exception:
             continue

@@ -65,6 +65,7 @@ Out of scope for now: social, health, smart home, e-commerce, navigation (other 
 - Flow: item lands in pool -> extraction (OCR, PDF text, transcription) -> semantic detection -> routing. Originals are kept so smarter classification can be re-run later.
 
 ## 7. Decisions already made (do not relitigate without asking)
+- Intake gate decides keep or drop, nothing else. Everything kept (plus manual adds) goes into the pool unlabeled; categorization (intent, category, routed_app) happens downstream after the pool schema expansion. The record/event/task routing in items_adapter.py is interim and will move there. Prefer structural signals (headers, Gmail tabs/labels, user behavior) over content regex.
 - Stay on plain sqlite3 for now. Postgres, Celery, Alembic, SQLAlchemy are deferred until the loop is proven. Likely later: APScheduler for sync jobs, FastAPI for the API, Next.js for the UI.
 - Gradebook and school-portal work is paused. The owner does not yet know which portal his college uses. When it returns, it becomes one more adapter.
 - Priority formula in gradebook/priority.py is P = clamp(Wc * I * R * U * (1 + V), 0, 1) (category weight, impact, grade risk, urgency, volatility). The generic engine should generalize this to items (due date, importance, effort, consequence) with grade impact as an optional plugin.
