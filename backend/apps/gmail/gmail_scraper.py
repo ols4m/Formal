@@ -14,7 +14,7 @@ import json
 import os
 import re
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -127,31 +127,16 @@ def extract_action_items(body: str) -> list[str]:
     return items[:5]  # cap at 5 so it doesn't explode
 
 
-# ── Groq classifier ───────────────────────────────────────────────────────────
-
-# Subject-line signals that indicate an action even on transactional (no List-Unsubscribe) emails.
-# Prevents the record shortcut from swallowing actionable emails.
-_SUBJECT_ACTION_RE = re.compile(
-    r'(?:action\s+(?:required|needed|advised)'
-    r'|confirm\s+(?:your|the|a)'
-    r'|(?:please|kindly)\s+(?:confirm|verify|reply|respond|review|sign|submit|complete)'
-    r'|pending\s+(?:request|action|review)'
-    r'|reminder:'
-    r'|new message from'
-    r'|\[(?:action|due|reminder))',
-    re.IGNORECASE
-)
-
-# ── Structural classifier patterns (imported from items_adapter) ─────────────
-from apps.gmail.items_adapter import (
-    _COMPLETED_RE, _STATUS_UPDATE_RE, _CONFIRMATION_RE, _OTP_SUBJECT_RE,
-    _ACADEMIC_RECORD_RE, _DEPOSIT_RE, _DELIVERED_RE, _BULK_DIGEST_RE,
-)
-
 # ── Engagement index ──────────────────────────────────────────────────────────
 
 _ENGAGEMENT_CACHE_PATH = Path('output/engagement_cache.json')
-_ENGAGEMENT_TTL_HOURS  = 24
+_ENGAGEMENT_TTL_HOURS  = 24 * 7   # a daily run reuses the index for a week
+
+# Bulk tabs the gate filters; Primary/personal mail always passes
+_BULK_TABS = ('promotions', 'social', 'updates', 'forums')
+
+# A sender whose items you dismissed this often (and never finished) is dropped
+_DISMISS_DROP_THRESHOLD = 3
 
 
 def _sender_domain(address: str) -> str:
@@ -160,23 +145,28 @@ def _sender_domain(address: str) -> str:
     return m.group(1).lower() if m else address.lower().strip()
 
 
-def build_engagement_index(service, cache_path: Path = _ENGAGEMENT_CACHE_PATH) -> dict:
+def build_engagement_index(service, cache_path: Path = _ENGAGEMENT_CACHE_PATH,
+                           rebuild: bool = False) -> dict:
     """
     Build a sender-domain engagement signal from Gmail history.
 
     Returns a dict:
       {
         'replied_domains':  set of domains the user has sent mail to,
-        'opened_domains':   {domain: open_count} for inbox messages not from self,
+        'opened_domains':   {domain: count} of messages still in the inbox
+                            (Primary/Updates, last 500) — kept, not necessarily read,
         'built_at':         ISO timestamp,
       }
 
     Cached to disk for _ENGAGEMENT_TTL_HOURS hours so it's not rebuilt every run.
+    A build with any API error is used for this run only and never cached, so one
+    network blip can't silently empty the bulk tabs for a week. rebuild=True
+    ignores the cache.
     """
     os.makedirs('output', exist_ok=True)
 
     # Return cached index if fresh
-    if cache_path.exists():
+    if cache_path.exists() and not rebuild:
         try:
             cached = json.loads(cache_path.read_text())
             built  = datetime.fromisoformat(cached['built_at'])
@@ -191,6 +181,7 @@ def build_engagement_index(service, cache_path: Path = _ENGAGEMENT_CACHE_PATH) -
 
     replied_domains: set              = set()
     opened_domains:  defaultdict[str, int] = defaultdict(int)
+    errors = 0
 
     # ── Signal 1: domains you've replied to (sent mail) ──────────────────────
     try:
@@ -212,8 +203,10 @@ def build_engagement_index(service, cache_path: Path = _ENGAGEMENT_CACHE_PATH) -
                     if d:
                         replied_domains.add(d)
             except Exception:
+                errors += 1
                 continue
     except Exception as e:
+        errors += 1
         print(f'  ⚠️  Could not fetch sent mail: {e}')
 
     # ── Signal 2: inbox open proxy — messages kept in INBOX by sender domain ──
@@ -240,8 +233,10 @@ def build_engagement_index(service, cache_path: Path = _ENGAGEMENT_CACHE_PATH) -
                 if d:
                     opened_domains[d] += 1
             except Exception:
+                errors += 1
                 continue
     except Exception as e:
+        errors += 1
         print(f'  ⚠️  Could not fetch inbox history: {e}')
 
     index = {
@@ -249,57 +244,69 @@ def build_engagement_index(service, cache_path: Path = _ENGAGEMENT_CACHE_PATH) -
         'opened_domains':  dict(opened_domains),
         'built_at':        datetime.now(timezone.utc).isoformat(),
     }
-    cache_path.write_text(json.dumps(index, indent=2))
-    print(f'  Engagement index: {len(replied_domains)} reply domains, '
-          f'{len(opened_domains)} inbox domains cached.')
+    if errors:
+        print(f'  ⚠️  Engagement index had {errors} API error(s); using it for this run only (not cached).')
+    else:
+        cache_path.write_text(json.dumps(index, indent=2))
+        print(f'  Engagement index: {len(replied_domains)} reply domains, '
+              f'{len(opened_domains)} inbox domains cached.')
 
     index['replied_domains'] = replied_domains
     index['opened_domains']  = defaultdict(int, opened_domains)
     return index
 
 
-def _is_low_engagement(sender: str, index: dict | None) -> bool:
-    """
-    Return True if the sender's domain shows no behavioral engagement signal.
+def _engagement_reason(sender: str, index: dict | None, threshold: int) -> str | None:
+    """Why this sender counts as engaged, or None if it doesn't.
 
-    High engagement (returns False — let it through):
-      - User has ever replied to this domain (strong signal)
-      - User has kept ≥2 messages from this domain in inbox (moderate signal)
-
-    Low engagement (returns True — candidate for auto-noise):
-      - No replies AND fewer than 2 inbox appearances
+      'replied'          — you have sent mail to this domain
+      'kept_<threshold>' — ≥threshold of its messages are still in your inbox
+      'no_index'         — no engagement data this run, so nothing is suppressed
+      'no_domain'        — unparseable From, so nothing is suppressed
     """
     if index is None:
-        return False  # no data → don't suppress
-
+        return 'no_index'
     domain = _sender_domain(sender)
     if not domain:
-        return False
-
+        return 'no_domain'
     if domain in index.get('replied_domains', set()):
-        return False
+        return 'replied'
+    if index.get('opened_domains', {}).get(domain, 0) >= threshold:
+        return f'kept_{threshold}'
+    return None
 
-    opened = index.get('opened_domains', {})
-    if opened.get(domain, 0) >= 2:
-        return False
 
-    return True
+def _is_low_engagement(sender: str, index: dict | None) -> bool:
+    """True if the sender has no engagement signal (≥2 kept or any reply)."""
+    return _engagement_reason(sender, index, 2) is None
 
 
 def _is_low_engagement_at_threshold(sender: str, index: dict | None,
                                      threshold: int = 5) -> bool:
-    """Like _is_low_engagement but requires ≥threshold opened messages."""
-    if index is None:
-        return False
-    domain = _sender_domain(sender)
-    if not domain:
-        return False
-    if domain in index.get('replied_domains', set()):
-        return False
-    opened = index.get('opened_domains', {})
-    if opened.get(domain, 0) >= threshold:
-        return False
-    return True
+    """Like _is_low_engagement but requires ≥threshold kept messages."""
+    return _engagement_reason(sender, index, threshold) is None
+
+
+def _is_dismissed_sender(domain: str, reputation: dict | None) -> bool:
+    """True when you dismissed this sender's items ≥_DISMISS_DROP_THRESHOLD times
+    and never marked one done (sender_reputation, written by the Agenda CLIs)."""
+    done, dismissed = (reputation or {}).get(domain, (0, 0))
+    return dismissed >= _DISMISS_DROP_THRESHOLD and done == 0
+
+
+def _load_sender_reputation() -> dict[str, tuple[int, int]]:
+    """Read sender_reputation as {domain: (done_count, dismiss_count)}; {} if unavailable."""
+    try:
+        conn = get_db()
+        try:
+            rows = conn.execute(
+                'SELECT domain, done_count, dismiss_count FROM sender_reputation'
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+    return {r['domain']: (r['done_count'], r['dismiss_count']) for r in rows}
 
 
 # ── Sender frequency index ────────────────────────────────────────────────────
@@ -307,23 +314,39 @@ def _is_low_engagement_at_threshold(sender: str, index: dict | None,
 _FREQUENCY_THRESHOLD = 2  # domains with ≤ this many emails in history are "rare"
 
 
-def _build_frequency_index(history_path: str = 'output/emails_history.json') -> dict[str, int]:
-    """Count emails per sender domain from local history. No API calls."""
+def _build_frequency_index(history_path: str = 'output/emails_history.json',
+                           batch: list[dict] | None = None) -> dict[str, int]:
+    """Count emails per sender domain from local history plus the current batch.
+
+    Counting the batch (deduplicated by message ID) means a first run with no
+    history doesn't treat every sender as rare. No API calls.
+    """
     counts: dict[str, int] = defaultdict(int)
+    seen: set = set()
     try:
         with open(history_path, encoding='utf-8') as f:
             history = json.load(f)
         for email in history.get('emails', []):
+            seen.add(email.get('id'))
             d = _sender_domain(email.get('from', ''))
             if d:
                 counts[d] += 1
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError, AttributeError):
         pass
+    for email in batch or []:
+        msg_id = email.get('id')
+        if msg_id and msg_id in seen:
+            continue
+        seen.add(msg_id)
+        d = _sender_domain(email.get('from', ''))
+        if d:
+            counts[d] += 1
     return dict(counts)
 
 
 def _is_rare_sender(sender: str, frequency_index: dict[str, int]) -> bool:
-    """Return True if the sender domain has appeared ≤ _FREQUENCY_THRESHOLD times in history."""
+    """Return True if the sender domain has appeared ≤ _FREQUENCY_THRESHOLD times
+    (history plus the current batch, so this email counts toward its own total)."""
     domain = _sender_domain(sender)
     return frequency_index.get(domain, 0) <= _FREQUENCY_THRESHOLD
 
@@ -379,76 +402,20 @@ def _make_result(email: dict, category: str, intent: str, confidence: float,
     }
 
 
-def _structural_classify(email: dict) -> dict | None:
-    """Try to classify an email structurally without AI.
-
-    Returns a classification dict if confident, None if ambiguous (needs Groq).
-    High precision, low recall — only fires when certain.
-    """
-    subject = email.get('subject', '')
-    body = (email.get('body') or '')[:500]
-    combined = subject + ' ' + body
-
-    # Completed/resolved actions — subject signals it's done
-    if _COMPLETED_RE.search(subject):
-        return _make_result(email, 'uncategorized', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
-
-    # System status updates — informational, no user action
-    if _STATUS_UPDATE_RE.search(combined):
-        return _make_result(email, 'uncategorized', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
-
-    # Confirmations/receipts — action already done
-    if _CONFIRMATION_RE.search(combined):
-        return _make_result(email, 'uncategorized', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
-
-    # OTP/verification codes — ephemeral, not actionable
-    if _OTP_SUBJECT_RE.search(subject):
-        return _make_result(email, 'uncategorized', 'data', 0.95, 1, 'evergreen', None, None, stage='structural')
-
-    # Academic grade/score notifications
-    if _ACADEMIC_RECORD_RE.search(combined):
-        return _make_result(email, 'uncategorized', 'data', 0.90, 2, 'evergreen', None, None, stage='structural')
-
-    # Financial deposits/statements — money info, no action
-    if _DEPOSIT_RE.search(combined):
-        return _make_result(email, 'uncategorized', 'data', 0.90, 2, 'evergreen', None, None, stage='structural')
-
-    # Delivery/shipping updates
-    if _DELIVERED_RE.search(subject):
-        return _make_result(email, 'uncategorized', 'data', 0.90, 1, 'evergreen', None, None, stage='structural')
-
-    # Bulk digests/newsletters
-    if _BULK_DIGEST_RE.search(combined):
-        return _make_result(email, 'uncategorized', 'data', 0.85, 1, 'evergreen', None, None, stage='structural')
-
-    return None  # ambiguous — needs Groq
-
-
-def _unclassified_fallback(email: dict, has_unsub: bool, tab: str,
-                           is_important: bool, subject: str) -> dict:
-    """Signal-based fallback when AI classification is unavailable or fails."""
-    if _SUBJECT_ACTION_RE.search(subject):
-        cat, intent, cons, stage = 'uncategorized', 'action', 2, 'unclassified'
-    elif has_unsub and tab in ('updates', 'forums', 'promotions', 'social'):
-        cat, intent, cons, stage = 'uncategorized', 'data', 1, 'unclassified_newsletter'
-    else:
-        cons  = 2 if is_important else 1
-        cat, intent, stage = 'uncategorized', 'action', 'unclassified'
-    return _make_result(
-        email, cat, intent, 0.50, cons, 'evergreen',
-        None, None, stage=stage,
-    )
-
-
 def _classify_one(email: dict, client=None,
                    engagement_index: dict | None = None,
-                   frequency_index: dict[str, int] | None = None) -> dict:
-    """Classify a single email through the filter pipeline.
+                   frequency_index: dict[str, int] | None = None,
+                   reputation: dict[str, tuple[int, int]] | None = None) -> dict:
+    """Decide pool vs noise for one email (first match wins).
 
-    Pipeline (first match wins):
-      1. Tab gate           — promotions/social with low engagement → dropped
-      2. Updates/forums gate — behavioral signals → dropped
-      3. AI (optional) or unclassified fallback → pool
+      0. Bulk tab, not Important, sender you keep dismissing  → noise 'dismissed_sender'
+      1. Promotions/Social: Important, replied, or ≥5 kept     → pool, else 'tab_noise'
+      2. Updates/Forums: Important, rare, replied, or ≥2 kept  → pool, else 'updates_noise'
+      3. Primary/personal/other tabs                           → pool ('primary_tab')
+
+    Pooled mail is labeled by the AI when a client is given, otherwise left
+    'uncategorized' for items_adapter. Every result carries _pass_reason (None
+    for noise) so each decision can be explained.
     """
     tab     = email.get('gmail_tab', 'unknown')
     subject = email.get('subject', '')
@@ -473,31 +440,34 @@ def _classify_one(email: dict, client=None,
 
     is_important = email.get('is_important', False)
 
-    # ── 1. Tab gate: promotions/social → engagement check ────────────────
+    # ── 0. Learned drop: senders you keep dismissing (bulk tabs only) ───────
+    if tab in _BULK_TABS and not is_important and _is_dismissed_sender(_domain, reputation):
+        return _enrich(_make_noise(email, stage='dismissed_sender'))
+
+    # ── 1. Promotions/social → engagement check ─────────────────────────────
     if tab in ('promotions', 'social'):
         if is_important:
             _pass_reason = 'important'
-        elif not _is_low_engagement_at_threshold(sender, engagement_index):
-            _pass_reason = 'engaged_5'
         else:
-            return _enrich(_make_noise(email, stage='tab_noise'))
-    else:
-        _pass_reason = 'not_promo_social'
+            _pass_reason = _engagement_reason(sender, engagement_index, 5)
+            if _pass_reason is None:
+                return _enrich(_make_noise(email, stage='tab_noise'))
 
-    # ── 2. Updates/forums gate: behavioral signals for mass-sent mail ───────
-    if tab in ('updates', 'forums'):
+    # ── 2. Updates/forums → behavioral signals for mass-sent mail ───────────
+    elif tab in ('updates', 'forums'):
         if is_important:
             _pass_reason = 'important'
         elif _rare:
             _pass_reason = 'rare_sender'
-        elif _engaged:
-            _pass_reason = 'engaged_sender'
-        elif not _rare and not _engaged:
-            return _enrich(_make_noise(email, stage='updates_noise'))
+        else:
+            _pass_reason = _engagement_reason(sender, engagement_index, 2)
+            if _pass_reason is None:
+                return _enrich(_make_noise(email, stage='updates_noise'))
 
-    # ── 3. Pool it — AI classification or uncategorized ────────────────────
-    if _pass_reason is None:
-        _pass_reason = 'no_gate'
+    # ── 3. Everything else (Primary/personal) passes ────────────────────────
+    else:
+        _pass_reason = 'primary_tab'
+
     if client is None:
         return _enrich(_make_result(email, 'uncategorized', 'unknown', 0.50, 1, 'evergreen', None, None, stage='unclassified'))
     prompt = f"""You are classifying one email for a personal life OS. Return ONLY a JSON object — no markdown, no extra text.
@@ -580,17 +550,13 @@ _ENGAGEMENT_CACHE_SCHOOL   = Path('output/engagement_cache_school.json')
 
 def classify_emails(emails: list[dict], gmail_services: list | None = None,
                      use_ai: bool = False, rebuild: bool = False) -> list[dict]:
-    """Classify all emails through the filter pipeline.
+    """Run every email through the pool-vs-noise gate (see _classify_one).
 
-    Pipeline order:
-      1. Tab auto-noise (promotions/social)
-      2. No List-Unsubscribe → personal record (skip Groq)
-      3. Updates/forums gate (frequency + engagement)
-      4. Structural regex → data records (skip Groq)
-      5. AI (when use_ai=True) or unclassified fallback
-
-    gmail_services: list of authenticated Gmail API service objects (personal + school).
-    Engagement indexes are built from ALL accounts and merged.
+    Signals loaded once per run: the engagement index (built from ALL accounts
+    and merged), sender frequency (history plus this batch), and the
+    sender_reputation table written by the Agenda's done/dismiss commands.
+    rebuild=True re-classifies emails already in the pool and ignores the
+    engagement cache. Labels come from the AI only when use_ai=True.
     """
     # Build and merge engagement indexes from all accounts
     cache_paths = [_ENGAGEMENT_CACHE_PERSONAL, _ENGAGEMENT_CACHE_SCHOOL]
@@ -598,7 +564,7 @@ def classify_emails(emails: list[dict], gmail_services: list | None = None,
     for i, service in enumerate(gmail_services or []):
         try:
             cache_path = cache_paths[i] if i < len(cache_paths) else _ENGAGEMENT_CACHE_PATH
-            idx = build_engagement_index(service, cache_path=cache_path)
+            idx = build_engagement_index(service, cache_path=cache_path, rebuild=rebuild)
             if engagement_index is None:
                 engagement_index = idx
             else:
@@ -608,7 +574,8 @@ def classify_emails(emails: list[dict], gmail_services: list | None = None,
         except Exception as e:
             print(f'  ⚠️  Engagement index failed for account {i+1}: {e}')
 
-    frequency_index = _build_frequency_index()
+    frequency_index = _build_frequency_index(batch=emails)
+    reputation = _load_sender_reputation()
 
     client = None
     if use_ai:
@@ -643,19 +610,26 @@ def classify_emails(emails: list[dict], gmail_services: list | None = None,
             continue
         if i % 10 == 0 or i == len(emails):
             print(f'  Classifying {i}/{len(emails)}...')
-        results.append(_classify_one(email, client, engagement_index, frequency_index))
+        results.append(_classify_one(email, client, engagement_index, frequency_index, reputation))
 
     if skipped:
         print(f'  Skipped {skipped} email(s) already in pool.')
 
-    # Pipeline summary
-    stages = defaultdict(int)
-    for r in results:
-        stages[r.get('_filter_stage', 'unknown')] += 1
-    parts = [f'{stages.get(s, 0)} {s}' for s in ('tab_noise', 'record', 'updates_noise', 'structural', 'groq', 'unclassified', 'unclassified_newsletter') if stages.get(s)]
-    print(f'  Pipeline: {len(results)} total → {" | ".join(parts)}')
+    for line in _pipeline_summary(results):
+        print(line)
 
     return results
+
+
+def _pipeline_summary(results: list[dict]) -> list[str]:
+    """One line of counts per gate stage, one per reason mail was kept."""
+    stages  = Counter(r.get('_filter_stage', 'unknown') for r in results)
+    reasons = Counter(r['_pass_reason'] for r in results if r.get('_pass_reason'))
+    lines = [f'  Pipeline: {len(results)} total -> '
+             + ' | '.join(f'{n} {s}' for s, n in stages.most_common())]
+    if reasons:
+        lines.append('  Kept because: ' + ' | '.join(f'{n} {r}' for r, n in reasons.most_common()))
+    return lines
 
 
 # ==========================================

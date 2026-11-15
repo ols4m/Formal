@@ -482,6 +482,7 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
                 "sender_domain":   sender_domain,
                 "engaged_sender":  any(e.get("_engaged_sender") for e in emails),
                 "rare_sender":     any(e.get("_rare_sender") for e in emails),
+                "pass_reason":     emails[-1].get("_pass_reason"),
             },
         )
 
@@ -529,6 +530,7 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
             "engaged_sender":  any(e.get("_engaged_sender") for e in emails),
             "rare_sender":     any(e.get("_rare_sender") for e in emails),
             "has_action_items": has_action_items,
+            "pass_reason":     emails[-1].get("_pass_reason"),
         },
     )
 

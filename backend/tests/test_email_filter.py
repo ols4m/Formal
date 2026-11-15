@@ -1,20 +1,25 @@
 """Tests for the Gmail pre-Groq filter pipeline."""
 
+import io
 import sys
+import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from apps.gmail.gmail_scraper import (
+    _build_frequency_index,
     _classify_one,
     _is_low_engagement,
     _is_low_engagement_at_threshold,
     _is_rare_sender,
     _make_noise,
+    _pipeline_summary,
     _sender_domain,
-    _structural_classify,
+    build_engagement_index,
 )
 
 
@@ -247,61 +252,6 @@ class TestEngagementEdgeCases(unittest.TestCase):
         self.assertEqual(_sender_domain('plain@test.org'), 'test.org')
 
 
-class TestStructuralClassifier(unittest.TestCase):
-    """Layer 1: structural regex classification before Groq."""
-
-    def test_completed_subject_detected(self):
-        e = _email(subject='Scheduled System Maintenance - COMPLETE')
-        r = _structural_classify(e)
-        self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'uncategorized')
-        self.assertEqual(r['_filter_stage'], 'structural')
-
-    def test_status_update_detected(self):
-        e = _email(subject='Systems Currently Unavailable',
-                   body='Our systems are currently experiencing downtime.')
-        r = _structural_classify(e)
-        self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'uncategorized')
-
-    def test_confirmation_detected(self):
-        e = _email(subject='Thank you for registering!',
-                   body='Welcome to our platform.')
-        r = _structural_classify(e)
-        self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'uncategorized')
-
-    def test_otp_detected(self):
-        e = _email(subject='Your verification code is 123456')
-        r = _structural_classify(e)
-        self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'uncategorized')
-
-    def test_deposit_detected(self):
-        e = _email(subject='Your payment will be deposited today')
-        r = _structural_classify(e)
-        self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'uncategorized')
-
-    def test_delivery_detected(self):
-        e = _email(subject='Your order is here!')
-        r = _structural_classify(e)
-        self.assertIsNotNone(r)
-        self.assertEqual(r['category'], 'uncategorized')
-
-    def test_ambiguous_returns_none(self):
-        """Emails without clear structural signals go to Groq."""
-        e = _email(subject='Sign up for advising appointments')
-        r = _structural_classify(e)
-        self.assertIsNone(r)
-
-    def test_action_email_returns_none(self):
-        """Action-oriented emails should NOT be caught by structural classifier."""
-        e = _email(subject='[Action Required] Submit your FAFSA')
-        r = _structural_classify(e)
-        self.assertIsNone(r)
-
-
 class TestPoolFallback(unittest.TestCase):
     """When client=None, non-noise emails pool as uncategorized."""
 
@@ -370,16 +320,16 @@ class TestEnrichmentFields(unittest.TestCase):
 class TestPassReason(unittest.TestCase):
     """Every pooled email records why it passed the gates."""
 
-    def test_primary_tab_not_promo_social(self):
+    def test_primary_tab_reason(self):
         e = _email(gmail_tab='primary')
         r = _classify_one(e, client=None)
-        self.assertEqual(r['_pass_reason'], 'not_promo_social')
+        self.assertEqual(r['_pass_reason'], 'primary_tab')
 
     def test_promotions_engaged_reason(self):
         e = _email(gmail_tab='promotions')
         eng = {'replied_domains': set(), 'opened_domains': {'example.com': 10}}
         r = _classify_one(e, _mock_client(), engagement_index=eng)
-        self.assertEqual(r['_pass_reason'], 'engaged_5')
+        self.assertEqual(r['_pass_reason'], 'kept_5')
 
     def test_promotions_important_reason(self):
         e = _email(gmail_tab='promotions', is_important=True)
@@ -406,13 +356,131 @@ class TestPassReason(unittest.TestCase):
         freq = {'drew.edu': 10}
         eng = {'replied_domains': {'drew.edu'}, 'opened_domains': {}}
         r = _classify_one(e, _mock_client(), engagement_index=eng, frequency_index=freq)
-        self.assertEqual(r['_pass_reason'], 'engaged_sender')
+        self.assertEqual(r['_pass_reason'], 'replied')
 
     def test_noise_has_no_pass_reason(self):
         e = _email(gmail_tab='promotions')
         eng = {'replied_domains': set(), 'opened_domains': {}}
         r = _classify_one(e, client=None, engagement_index=eng)
         self.assertIsNone(r['_pass_reason'])
+
+    def test_updates_noise_has_no_pass_reason(self):
+        e = _email(gmail_tab='updates', **{'from': 'digest@forum.example.com'})
+        eng = {'replied_domains': set(), 'opened_domains': {}}
+        r = _classify_one(e, client=None, engagement_index=eng,
+                          frequency_index={'forum.example.com': 20})
+        self.assertEqual(r['_filter_stage'], 'updates_noise')
+        self.assertIsNone(r['_pass_reason'])
+
+    def test_updates_kept_reason(self):
+        e = _email(gmail_tab='updates', **{'from': 'noreply@app.example.com'})
+        eng = {'replied_domains': set(), 'opened_domains': {'app.example.com': 2}}
+        r = _classify_one(e, client=None, engagement_index=eng,
+                          frequency_index={'app.example.com': 9})
+        self.assertEqual(r['_pass_reason'], 'kept_2')
+
+    def test_missing_index_is_labeled_honestly(self):
+        e = _email(gmail_tab='promotions')
+        r = _classify_one(e, client=None, engagement_index=None)
+        self.assertEqual(r['_pass_reason'], 'no_index')
+
+
+class TestDismissedSender(unittest.TestCase):
+    """Senders you keep dismissing are dropped from bulk tabs."""
+
+    FB = {'from': 'Facebook <notification@facebookmail.com>'}
+    ENG = {'replied_domains': set(), 'opened_domains': {'facebookmail.com': 9}}
+
+    def _run(self, reputation, **overrides):
+        e = _email(**{'gmail_tab': 'social', **self.FB, **overrides})
+        return _classify_one(e, client=None, engagement_index=self.ENG,
+                             reputation=reputation)
+
+    def test_three_dismissals_drop(self):
+        r = self._run({'facebookmail.com': (0, 3)})
+        self.assertEqual(r['_filter_stage'], 'dismissed_sender')
+        self.assertIsNone(r['_pass_reason'])
+
+    def test_two_dismissals_still_pass(self):
+        self.assertEqual(self._run({'facebookmail.com': (0, 2)})['_filter_stage'], 'unclassified')
+
+    def test_any_done_keeps_sender(self):
+        self.assertEqual(self._run({'facebookmail.com': (1, 9)})['_filter_stage'], 'unclassified')
+
+    def test_important_overrides_dismissals(self):
+        r = self._run({'facebookmail.com': (0, 9)}, is_important=True)
+        self.assertEqual(r['_pass_reason'], 'important')
+
+    def test_primary_tab_never_dropped(self):
+        r = self._run({'facebookmail.com': (0, 9)}, gmail_tab='primary')
+        self.assertEqual(r['_pass_reason'], 'primary_tab')
+
+
+class TestFrequencyIndexBatch(unittest.TestCase):
+    def test_batch_counts_when_no_history(self):
+        batch = [_email(id=str(i), **{'from': 'news@example.org'}) for i in range(3)]
+        freq = _build_frequency_index('does/not/exist.json', batch=batch)
+        self.assertEqual(freq['example.org'], 3)
+        self.assertFalse(_is_rare_sender('news@example.org', freq))
+
+    def test_duplicate_ids_count_once(self):
+        batch = [_email(id='same', **{'from': 'a@example.org'})] * 2
+        self.assertEqual(_build_frequency_index('does/not/exist.json', batch=batch)['example.org'], 1)
+
+
+class TestEngagementCache(unittest.TestCase):
+    """A build with API errors is used once and never cached."""
+
+    def _service(self, fail=False):
+        svc = MagicMock()
+        msgs = svc.users.return_value.messages.return_value
+        msgs.list.return_value.execute.return_value = {'messages': [{'id': '1'}]}
+        headers = [{'name': 'To', 'value': 'prof@example.edu'},
+                   {'name': 'From', 'value': 'news@example.org'}]
+        if fail:
+            msgs.get.return_value.execute.side_effect = Exception('rate limited')
+        else:
+            msgs.get.return_value.execute.return_value = {'payload': {'headers': headers}}
+        return svc
+
+    def test_clean_build_is_cached(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / 'eng.json'
+            with redirect_stdout(io.StringIO()):
+                idx = build_engagement_index(self._service(), cache_path=cache)
+            self.assertTrue(cache.exists())
+            self.assertIn('example.edu', idx['replied_domains'])
+
+    def test_failed_build_is_not_cached(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / 'eng.json'
+            with redirect_stdout(io.StringIO()):
+                build_engagement_index(self._service(fail=True), cache_path=cache)
+            self.assertFalse(cache.exists())
+
+    def test_rebuild_ignores_fresh_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / 'eng.json'
+            with redirect_stdout(io.StringIO()):
+                build_engagement_index(self._service(), cache_path=cache)
+                svc = self._service()
+                build_engagement_index(svc, cache_path=cache)
+                svc.users.assert_not_called()
+                build_engagement_index(svc, cache_path=cache, rebuild=True)
+                svc.users.assert_called()
+
+
+class TestPipelineSummary(unittest.TestCase):
+    def test_counts_stages_and_reasons(self):
+        results = [
+            {'_filter_stage': 'unclassified', '_pass_reason': 'primary_tab'},
+            {'_filter_stage': 'unclassified', '_pass_reason': 'kept_5'},
+            {'_filter_stage': 'tab_noise', '_pass_reason': None},
+        ]
+        lines = _pipeline_summary(results)
+        self.assertIn('2 unclassified', lines[0])
+        self.assertIn('1 tab_noise', lines[0])
+        self.assertIn('1 kept_5', lines[1])
 
 
 if __name__ == '__main__':
