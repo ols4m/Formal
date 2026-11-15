@@ -11,12 +11,14 @@ Usage:
 """
 
 import argparse
+import html
 import json
 import mailbox
 import os
 import re
 import sys
 from datetime import datetime, timezone
+from email.header import decode_header, make_header
 from email.utils import parsedate_to_datetime
 
 # ── NYT sender domains ───────────────────────────────────────────────────────
@@ -29,7 +31,28 @@ _NYT_DOMAINS = {
     'mail.nytimes.com',
 }
 
-_NYT_LINK_RE = re.compile(r'https?://(?:www\.)?nytimes\.com/[^\s"<>\)]+')
+# Any nytimes.com host (newsletters link through nl.nytimes.com tracking redirects)
+_NYT_LINK_RE = re.compile(r'https?://(?:[\w-]+\.)*(?:nytimes\.com|nyt\.com|nyti\.ms)/[^\s"\'<>)]+', re.IGNORECASE)
+
+# <a href="...">text</a> — links are taken from the HTML before tags are stripped
+_ANCHOR_RE = re.compile(r'<a\b[^>]*?\bhref\s*=\s*["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
+
+# Blocks whose contents are never readable text
+_NON_TEXT_BLOCK_RE = re.compile(r'<(style|script|head|title)\b.*?</\1\s*>|<!--.*?-->', re.IGNORECASE | re.DOTALL)
+
+# Zero-width and filler characters newsletters use to pad preview text
+_INVISIBLE_RE = re.compile(r'[​-‏­﻿͏⁠]+')
+
+
+def _decode_header(value) -> str:
+    """Decode RFC 2047 encoded words ('=?utf-8?B?...?=') in a header."""
+    if not value:
+        return ''
+    try:
+        text = str(make_header(decode_header(str(value))))
+    except Exception:
+        text = str(value)
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 def _sender_domain(from_header: str) -> str:
@@ -45,39 +68,63 @@ def _is_nyt(from_header: str) -> bool:
 
 # ── Body extraction ──────────────────────────────────────────────────────────
 
-def _extract_body(msg) -> str:
-    """Get text body from an email.message.Message, preferring text/plain."""
-    if msg.is_multipart():
-        # Try text/plain first
-        for part in msg.walk():
-            if part.get_content_type() == 'text/plain':
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or 'utf-8'
-                    return payload.decode(charset, errors='replace')
-        # Fall back to text/html stripped
-        for part in msg.walk():
-            if part.get_content_type() == 'text/html':
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or 'utf-8'
-                    return _strip_html(payload.decode(charset, errors='replace'))
+def _part_text(part) -> str:
+    payload = part.get_payload(decode=True)
+    if not payload:
         return ''
-    else:
-        payload = msg.get_payload(decode=True)
-        if not payload:
-            return ''
-        charset = msg.get_content_charset() or 'utf-8'
-        text = payload.decode(charset, errors='replace')
-        if msg.get_content_type() == 'text/html':
-            return _strip_html(text)
-        return text
+    charset = part.get_content_charset() or 'utf-8'
+    try:
+        return payload.decode(charset, errors='replace')
+    except LookupError:  # unknown charset name
+        return payload.decode('utf-8', errors='replace')
 
 
-def _strip_html(html: str) -> str:
-    text = re.sub(r'<[^>]+>', ' ', html)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+def _first_part(msg, content_type: str) -> str:
+    for part in msg.walk():
+        if part.get_content_type() == content_type:
+            text = _part_text(part)
+            if text:
+                return text
+    return ''
+
+
+def _extract_body(msg) -> str:
+    """Readable text body: text/plain if present, else stripped text/html."""
+    plain = _first_part(msg, 'text/plain')
+    if plain:
+        return _clean_text(plain)
+    return _strip_html(_first_part(msg, 'text/html'))
+
+
+def _extract_links(msg) -> list[dict]:
+    """NYT links with their anchor text, from the HTML part (plain text as fallback).
+
+    Deduplicated by URL in order of appearance; anchors without text (images,
+    tracking pixels) are skipped.
+    """
+    links: dict[str, str] = {}
+    page = _first_part(msg, 'text/html')
+    for href, inner in _ANCHOR_RE.findall(page):
+        url = html.unescape(href).strip()
+        text = _strip_html(inner)
+        if text and _NYT_LINK_RE.fullmatch(url) and url not in links:
+            links[url] = text
+    if not links:
+        for url in _NYT_LINK_RE.findall(_first_part(msg, 'text/plain')):
+            links.setdefault(url, '')
+    return [{'text': text, 'url': url} for url, text in links.items()]
+
+
+def _clean_text(text: str) -> str:
+    text = _INVISIBLE_RE.sub('', text.replace(' ', ' '))
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def _strip_html(page: str) -> str:
+    text = _NON_TEXT_BLOCK_RE.sub(' ', page)
+    text = re.sub(r'<br\s*/?>|</(p|div|tr|li|h\d)>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    return _clean_text(html.unescape(text))
 
 
 # ── Date parsing ─────────────────────────────────────────────────────────────
@@ -114,7 +161,7 @@ def _write_obsidian_note(article: dict, output_dir: str) -> str:
     links_section = ''
     if article['links']:
         links_section = '\n## Links\n' + '\n'.join(
-            f'- {link}' for link in article['links']
+            f"- [{link['text'] or link['url']}]({link['url']})" for link in article['links']
         )
 
     note = f"""---
@@ -166,16 +213,13 @@ def extract_nyt(mbox_path: str, obsidian_dir: str | None = None) -> dict:
             continue
         seen_ids.add(msg_id)
 
-        body = _extract_body(msg)
-        links = list(dict.fromkeys(_NYT_LINK_RE.findall(body)))  # dedup, preserve order
-
         article = {
             'id': msg_id,
-            'from': from_header,
-            'subject': msg.get('Subject', ''),
+            'from': _decode_header(from_header),
+            'subject': _decode_header(msg.get('Subject', '')),
             'date': _parse_date(msg),
-            'body': body[:5000],
-            'links': links,
+            'body': _extract_body(msg)[:5000],
+            'links': _extract_links(msg),   # [{'text', 'url'}]
             'source': 'takeout-highschool',
         }
         articles.append(article)
