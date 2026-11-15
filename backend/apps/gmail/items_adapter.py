@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import re
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from typing import Sequence
 
 from core.items import Item
@@ -32,10 +33,12 @@ _LEGACY_CATEGORY_MAP = {
     "other":       None,  # drop
 }
 
-_INVITE_RE = re.compile(r"^(invitation|invite)\s*:", re.IGNORECASE)
+# Calendar invites ("Invitation: ...", "Updated invitation: ...") are events
+_INVITE_RE = re.compile(r"^(updated\s+)?(invitation|invite)\s*:", re.IGNORECASE)
 
 _TICKET_RE = re.compile(r"ticket\s*#?\s*(\d{5,})", re.IGNORECASE)
-_ORDER_RE  = re.compile(r"order\s*#?\s*([\w-]{3,})", re.IGNORECASE)
+# The order token must contain a digit, so "in order to" never groups emails
+_ORDER_RE  = re.compile(r"\border\s*(?:#|no\.?|number)?\s*:?\s*((?=[\w-]*\d)[\w-]{3,})", re.IGNORECASE)
 
 # ── Informational signal patterns ────────────────────────────────────────────
 
@@ -48,10 +51,12 @@ _DELIVERED_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Completed/resolved status — action already done, nothing left to do
+# Completed/resolved status — action already done, nothing left to do.
+# Finished states only: a bare "complete" also matches "Complete your FAFSA ...".
 _COMPLETED_RE = re.compile(
-    r"\b(complete[d]?|resolved|restored|has been fixed|is back|back to normal|"
-    r"back online|issue.{0,20}resolved|service.{0,20}restored)\b",
+    r"\b(completed|(is|was|has been|now) complete|"
+    r"(order|purchase|payment|request|transfer|upload|download|setup) complete|"
+    r"resolved|restored|has been fixed|is back|back to normal|back online)\b",
     re.IGNORECASE,
 )
 
@@ -71,8 +76,23 @@ _CONFIRMATION_RE = re.compile(
     r"your (account|email|information) (has been )?(confirmed|verified|updated)|"
     r"your (data|export|download|report) (is |are )?(ready|available|complete)|"
     r"successfully (updated|changed|modified|signed|submitted|completed)|"
-    r"we received a request to (add|change|update|remove)|"
-    r"welcome to)\b",
+    r"we received a request to (add|change|update|remove))\b",
+    re.IGNORECASE,
+)
+
+# "Welcome to ..." is a record only when the subject says so and nothing asks for action
+_WELCOME_RE = re.compile(r"\bwelcome to\b", re.IGNORECASE)
+_ACTION_WORDS_RE = re.compile(
+    r"\b(register|apply|submit|complete your|sign up|rsvp|action required|"
+    r"due|deadline|respond by|please confirm)\b",
+    re.IGNORECASE,
+)
+
+# Card and purchase alerts — informational unless they ask you to verify something
+_PURCHASE_ALERT_RE = re.compile(
+    r"\b(you spent|you made a (purchase|payment)|purchase of \$|"
+    r"card (ending in \d+ )?(was )?(charged|used)|transaction (alert|notification)|"
+    r"payment (received|posted|processed)|receipt for)\b",
     re.IGNORECASE,
 )
 
@@ -90,8 +110,10 @@ _DEPOSIT_RE = re.compile(
 
 # ── Action signal patterns ────────────────────────────────────────────────────
 
+# "reply to this email" is deliberately absent: it is notification boilerplate
+# (Facebook, GitHub, LinkedIn) and used to invent a 3-day deadline for them.
 _RESPONSE_RE = re.compile(
-    r"\b(please respond|reply to this email|confirm.*amount|verify.*charge|"
+    r"\b(please respond|confirm.*amount|verify.*charge|"
     r"action required|respond by|you must|please confirm)\b",
     re.IGNORECASE,
 )
@@ -124,21 +146,52 @@ _MONTH_MAP = {
     "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
     "november": 11, "december": 12,
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6,
-    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    "jul": 7, "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
 }
+# Trailing \b stops "October 2026" from reading as October 20
 _DATE_RE = re.compile(
     r"\b(january|february|march|april|may|june|july|august|september|october|"
-    r"november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)"
-    r"\s+(\d{1,2})(?:st|nd|rd|th)?",
+    r"november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)\.?"
+    r"\s+(\d{1,2})(?:st|nd|rd|th)?\b",
     re.IGNORECASE,
 )
+# A month/day more than this far before the email's date means next year
+# ("Registration closes Jan 5" sent in November). Closer past dates stay put.
+_YEAR_WRAP_DAYS = 182
 _TOMORROW_RE   = re.compile(r"\bdue tomorrow\b|\b\[due tomorrow\]", re.IGNORECASE)
 _SLASH_DATE_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})(?:/\d{2,4})?\b")
 
 
-def _parse_due_at(emails: list[dict]) -> str | None:
-    today = datetime.now(timezone.utc)
-    is_event = any(e.get("category") == "event" for e in emails)
+def _email_sent_at(emails: list[dict]) -> datetime | None:
+    """Parse the newest email's Date header (RFC 2822 or ISO); None if unusable."""
+    raw = (emails[-1].get("date") or "").strip()
+    if not raw:
+        return None
+    try:
+        sent = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        try:
+            sent = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return sent if sent.tzinfo else sent.replace(tzinfo=timezone.utc)
+
+
+def _dated(month: int, day: int, reference: datetime) -> str | None:
+    """Build a due date in the reference year, wrapping to next year when the
+    month/day is more than _YEAR_WRAP_DAYS before the reference date."""
+    try:
+        due = datetime(reference.year, month, day, 23, 59, tzinfo=timezone.utc)
+        if due < reference - timedelta(days=_YEAR_WRAP_DAYS):
+            due = datetime(reference.year + 1, month, day, 23, 59, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return due.isoformat().replace("+00:00", "Z")
+
+
+def _parse_due_at(emails: list[dict], now: datetime | None = None) -> str | None:
+    today = now or datetime.now(timezone.utc)
+    reference = _email_sent_at(emails) or today
     combined = " ".join(
         " ".join([
             e.get("deadline") or "",
@@ -158,23 +211,17 @@ def _parse_due_at(emails: list[dict]) -> str | None:
         month = _MONTH_MAP.get(m.group(1).lower())
         day   = int(m.group(2))
         if month and 1 <= day <= 31:
-            year = today.year
-            try:
-                due = datetime(year, month, day, 23, 59, tzinfo=timezone.utc)
-                return due.isoformat().replace("+00:00", "Z")
-            except ValueError:
-                pass
+            due = _dated(month, day, reference)
+            if due:
+                return due
 
     m = _SLASH_DATE_RE.search(combined)
     if m:
         month, day = int(m.group(1)), int(m.group(2))
         if 1 <= month <= 12 and 1 <= day <= 31:
-            year = today.year
-            try:
-                due = datetime(year, month, day, 23, 59, tzinfo=timezone.utc)
-                return due.isoformat().replace("+00:00", "Z")
-            except ValueError:
-                pass
+            due = _dated(month, day, reference)
+            if due:
+                return due
 
     # Implicit urgency: if a response is required and no date found, assume 3 days
     requires_response = any(
@@ -288,6 +335,10 @@ def _record_type(emails: list[dict], category: str) -> str | None:
     if _CONFIRMATION_RE.search(combined_all):
         return "identity"
 
+    # Welcome emails — subject only, and never when they ask you to do something
+    if _WELCOME_RE.search(combined_subject) and not _ACTION_WORDS_RE.search(combined_all):
+        return "identity"
+
     # Completed/resolved actions — subject says it's done
     if _COMPLETED_RE.search(combined_subject):
         return "logistics"
@@ -295,6 +346,14 @@ def _record_type(emails: list[dict], category: str) -> str | None:
     # System status updates — no user action needed
     if _STATUS_UPDATE_RE.search(combined_all) and not requires_response:
         return "logistics"
+
+    # Deliveries and shipping updates — whatever the category
+    if _DELIVERED_RE.search(combined_subject) and not requires_response:
+        return "logistics"
+
+    # Card and purchase alerts — fraud checks ("verify ... charge") stay tasks
+    if _PURCHASE_ALERT_RE.search(combined_all) and not requires_response:
+        return "financial"
 
     # All informational transactions — any Groq "transaction" with no response needed
     if category == "transaction" and not requires_response:
@@ -308,7 +367,7 @@ def _record_type(emails: list[dict], category: str) -> str | None:
 
     # Bulk digests / newsletters — check subject and body
     if _BULK_DIGEST_RE.search(combined_all):
-        return "financial"
+        return "social"
 
     return None  # still actionable
 
@@ -378,9 +437,16 @@ def _build_item(emails: list[dict], source_item_id: str, source: str) -> Item | 
     if category == "noise" and any(e.get("is_important") for e in emails):
         category = "task"
 
+    # Calendar invites are events, never records
+    is_invite = bool(_INVITE_RE.match(emails[-1].get("subject", "")))
+    if is_invite and category not in ACTION_CATEGORIES:
+        category = "event"
+
     # Primary router: trust Groq's data classification directly;
     # fall back to regex _record_type() for action-labeled emails that are actually data
-    rt = _DATA_RECORD_TYPE.get(category) or _record_type(emails, category)
+    rt = _DATA_RECORD_TYPE.get(category)
+    if rt is None and not is_invite:
+        rt = _record_type(emails, category)
 
     sender_domain = emails[-1].get("_sender_domain") or _sender_domain(emails[-1].get("from", ""))
 
