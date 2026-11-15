@@ -936,6 +936,7 @@ async def main(creds: tuple = None, days: int = None, use_ai: bool = False, rebu
             print(f'  📦 {len(pool_items)} items upserted to pool.')
         else:
             print('  📦 No items to upsert.')
+        repo.reopen_deferred_items()
         archived = repo.archive_past_items()
         if archived:
             print(f'  📁 {archived} past item(s) archived.')

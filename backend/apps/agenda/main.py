@@ -33,7 +33,7 @@ def _load_open_items(repo, conn=None):
     Both views and row-number lookups use this one list, so row N always
     points at the same item.
     """
-    rows = repo.list_items(status="open", limit=200)
+    rows = repo.list_items(status="open", limit=None)
 
     # Only tasks and events for the agenda
     rows = [r for r in rows if r["item_type"] in ("task", "event")]
@@ -59,6 +59,9 @@ def print_agenda(show_all=False):
     init_db()
     conn = get_db()
     repo = ItemRepository(connection=conn)
+    reopened = repo.reopen_deferred_items()
+    if reopened:
+        print(f"  Reopened {reopened} deferred item(s).")
     archived = repo.archive_past_items()
     if archived:
         print(f"  Archived {archived} past item(s).")

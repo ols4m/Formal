@@ -38,7 +38,8 @@ _URGENCY_CONTEXT_LABEL = {
 
 
 def show_ranked(repo: ItemRepository, show_all: bool = False) -> None:
-    rows = repo.list_items(status="open", limit=50)
+    repo.reopen_deferred_items()
+    rows = repo.list_items(status="open", limit=None)
     if not rows:
         print("  No open items in the pool.")
         return

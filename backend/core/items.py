@@ -127,6 +127,17 @@ class ItemRepository:
                 )
         return len(items)
 
+    def reopen_deferred_items(self, now: str | None = None) -> int:
+        """Reopen deferred items whose defer date (stored in due_at) has arrived."""
+        now_str = now or _utc_now()
+        with self._connection:
+            cur = self._connection.execute(
+                """UPDATE items SET status = 'open', updated_at = ?
+                   WHERE status = 'deferred' AND due_at IS NOT NULL AND due_at <= ?""",
+                (now_str, now_str),
+            )
+        return cur.rowcount
+
     def archive_past_items(self, now: str | None = None) -> int:
         """Archive open items whose due_at is in the past.
 
@@ -160,21 +171,21 @@ class ItemRepository:
         self,
         *,
         status: str | None = "open",
-        limit: int = 100,
+        limit: int | None = 100,
     ) -> list[dict]:
-        if limit <= 0:
+        """List items ordered by due date (undated last), then age.
+
+        limit=None returns every matching row. Ranked views must use it and
+        cut AFTER scoring; a SQL limit would drop the newest undated items.
+        """
+        if limit is not None and limit <= 0:
             raise ValueError("Item query limit must be positive.")
-        if status is None:
-            rows = self._connection.execute(
-                "SELECT * FROM items ORDER BY due_at IS NULL, due_at, created_at LIMIT ?",
-                (limit,),
-            ).fetchall()
-        else:
-            rows = self._connection.execute(
-                """SELECT * FROM items WHERE status = ?
-                   ORDER BY due_at IS NULL, due_at, created_at LIMIT ?""",
-                (status, limit),
-            ).fetchall()
+        where, params = ("WHERE status = ?", [status]) if status is not None else ("", [])
+        sql = f"SELECT * FROM items {where} ORDER BY due_at IS NULL, due_at, created_at"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        rows = self._connection.execute(sql, params).fetchall()
         return [
             {**dict(row), "raw_payload": json.loads(row["raw_payload"])}
             for row in rows

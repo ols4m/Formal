@@ -47,7 +47,8 @@ def _load_owner() -> str:
 
 
 def _ranked_actions(repo: ItemRepository) -> list[tuple[float, str, Item]]:
-    rows = repo.list_items(status="open", limit=50)
+    repo.reopen_deferred_items()
+    rows = repo.list_items(status="open", limit=None)  # score everything, then take the top
     now  = datetime.now(timezone.utc)
     scored = []
     for row in rows:

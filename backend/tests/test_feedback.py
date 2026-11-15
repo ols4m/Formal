@@ -98,6 +98,32 @@ class TestAgendaRowNumbers(FeedbackTestCase):
         self.assertEqual(self._reputation("old.example.com"), (0, 0))
 
 
+class TestPoolHygiene(FeedbackTestCase):
+    def test_agenda_scores_every_open_row_before_cutting(self):
+        from apps.agenda import main as agenda
+
+        # 250 old undated items, then one new urgent item that SQL order puts last
+        self.repo.upsert([_item(f"old{i}", f"Old {i}", "bulk.example.com") for i in range(250)])
+        self.repo.upsert([_item("new", "New and urgent", "school.example.edu",
+                                due_at=None, importance=5, consequence=5)])
+        ranked = agenda._load_open_items(self.repo, conn=self.conn)
+        self.assertEqual(len(ranked), 251)
+        self.assertEqual(ranked[0][0].title, "New and urgent")
+
+    def test_list_items_limit_none_returns_all(self):
+        self.repo.upsert([_item(f"x{i}", f"X {i}", "a.example.com") for i in range(120)])
+        self.assertEqual(len(self.repo.list_items(limit=None)), 120)
+        self.assertEqual(len(self.repo.list_items()), 100)
+
+    def test_deferred_item_reopens_when_due(self):
+        self.repo.upsert([_item("d1", "Later", "a.example.com"), _item("d2", "Much later", "a.example.com")])
+        self.repo.update_status(self._id("d1"), "deferred", defer_until=_due(-0.1))
+        self.repo.update_status(self._id("d2"), "deferred", defer_until=_due(5))
+        self.assertEqual(self.repo.reopen_deferred_items(), 1)
+        statuses = {r["source_item_id"]: r["status"] for r in self.repo.list_items(status=None)}
+        self.assertEqual(statuses, {"d1": "open", "d2": "deferred"})
+
+
 class TestRankedItemsShortIds(FeedbackTestCase):
     def test_short_prefix_resolves(self):
         from apps.agenda.ranked_items import _resolve
