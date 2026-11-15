@@ -2,6 +2,13 @@
 
 Read this fully before changing anything. Then read COMMANDS.md, run `git log --oneline -15`, and read backend/core/items.py, backend/core/db.py, backend/core/profile.py.
 
+## 0. Current state (update at the end of every session)
+As of 2026-11-15. Claude memory does not travel between the Codespace and other machines; this section does.
+- Done: Gmail -> items pool -> Agenda loop hardened. Gate decides pool vs noise only, learns from dismissals (`sender_reputation`), and records `_pass_reason` on every email and item. items_adapter fixed: no fake deadlines from "reply to this email", invites are events, FAFSA-style deadlines stay tasks, deliveries/purchase alerts/digests are records, dates wrap to next year. `--done/--dismiss N` hit the right row. Views score the whole pool. Deferred items reopen. ranked_items `--ingest` removed. backend/output/*.json untracked.
+- Next: real-data check (needs Gmail tokens, .env, formal.db, output/emails_history.json copied to the machine): run the scraper, read the `Kept because:` line, count `pass_reason` for facebookmail.com, back up formal.db, then clean junk already in the pool. Then: expanded items schema + pool-level `--add` CLI + Takeout adapters (design lives in the Codespace's Claude memory). Then: read-based engagement signal in shadow mode; skip known message IDs before downloading.
+- Owner decisions pending: expiry for undated auto-imported Gmail tasks; git history rewrite for old personal data; retire legacy `route_to_db` and the dead Playwright school path.
+- Deadline: Google Takeout zips expire 2026-11-21 (download in a real browser, not the Codespace).
+
 ## 1. What Formal is
 A personal life operating system and AI butler. It ingests data from scattered life sources (school, email, calendar, finances, notes), puts it into one unified model, ranks what matters, and a central AI "Coach" advises (later: acts). Less productivity app, more personal strategist. It should find non-obvious leverage and eventually execute (draft, file, book), not just suggest. The more data it has, the better it knows the user.
 
@@ -9,7 +16,7 @@ Origin: the owner was academically ahead in high school, lost momentum, and is b
 
 ## 2. Owner and working style
 - Owner: Samuel, solo developer, now a college student (previously a high school quarter system, now semesters).
-- Environment: iPad, GitHub Codespaces, bash/Linux. Earlier work was on Windows, so legacy artifacts exist (CRLF warnings, a reserved filename `nul`). Never create files named nul, con, aux, or prn.
+- Environment: iPad, GitHub Codespaces, bash/Linux, plus a Windows PC copy (Git Bash) that has no gitignored data unless copied over. Legacy Windows artifacts exist (CRLF warnings, a reserved filename `nul`). Never create files named nul, con, aux, or prn.
 - He mostly copies commands and does not read prose. Give commands in exact run order, in separate blocks per step, with minimal explanation. Recommend ONE option instead of listing many. Never mix explanation text into command blocks.
 - Never load huge files into context (a 1M-character file already caused a context error). Use head, sed -n ranges, and grep. Do not read formal.db or grades.json in full.
 
@@ -43,8 +50,9 @@ Out of scope for now: social, health, smart home, e-commerce, navigation (other 
 - backend/core/items.py: the new generic `items` pool and adapter contract (fetch() -> list of items). Has tests for persistence and deduplication. Read it before extending it.
 - backend/profile.example.json: generic example profile (committed)
 - backend/tests/: unittest tests. Run: `cd backend && python -m unittest discover -s tests -v`
-- backend/apps/agenda/main.py: CLI that ranks rows from the old `tasks` table
-- backend/apps/gmail/gmail_scraper.py: email intake. School account via Playwright (Google SSO), personal via Gmail API OAuth (token.json and credentials.json, both gitignored). Classifier: regex noise filter, then Groq (llama-3.1-8b-instant) batch classification, with a regex fallback. Routes deadline/assignment emails into the old `tasks` table and writes output/emails.json.
+- backend/apps/agenda/main.py: daily Agenda CLI over the items pool (S/A/B by default, `--all` for C/D); `--done/--dismiss N` record sender_reputation. ranked_items.py is an alternate view of the same pool (accepts short IDs). backend/apps/coach/main.py: Coach v0 over the top items.
+- backend/apps/gmail/gmail_scraper.py: email intake via Gmail API OAuth for personal and school accounts (credentials.json, token.json, token_school.json, all gitignored). The gate only decides pool vs noise (engagement index, sender frequency, sender_reputation) and stamps `_pass_reason`; `--ai` optionally labels with Groq. backend/apps/gmail/items_adapter.py turns kept mail into items (record rules, due dates). Legacy leftovers: `route_to_db` still writes the old `tasks` table; the Playwright school path is dead code.
+- backend/tools/takeout_nyt.py: Google Takeout mbox -> NYT articles JSON (backend/data/, gitignored) + optional Obsidian notes.
 - backend/apps/gradebook/: PowerSchool and Google Classroom scrapers (Playwright), calculator.py, priority.py. School-specific and PAUSED.
 - backend/apps/jots/notebook/: Flask app + CLI + metadata fetcher. Still uses its OWN SQLite file (resources.db) and bare imports (`from db import ...`). Not yet on the shared DB.
 - Scripts add backend/ to sys.path and import `from core.db import ...`.
@@ -62,9 +70,9 @@ Out of scope for now: social, health, smart home, e-commerce, navigation (other 
 - Priority formula in gradebook/priority.py is P = clamp(Wc * I * R * U * (1 + V), 0, 1) (category weight, impact, grade risk, urgency, volatility). The generic engine should generalize this to items (due date, importance, effort, consequence) with grade impact as an optional plugin.
 
 ## 8. Known issues and debt
-- PRIVACY: backend/formal.db is tracked in git even though it is gitignored, and may contain personal school data. Likely first step is `git rm --cached backend/formal.db`. Whether git history needs cleaning is a SEPARATE decision. Do NOT rewrite history without explicit approval.
-- Confirm backend/debug_card.html is gone from the tree and decide whether it matters in history (it contained a teacher name and IDs).
-- Hardcoded leftovers to move into the profile: PowerSchool and Classroom URLs, the Groq system prompt (names colleges and an employer), classifier regexes tied to one school.
+- PRIVACY: formal.db (fcd2616) and backend/output/*.json (3dbc4b1) are no longer tracked, and debug_card.html is gone from the tree, but all of them remain in git history. Whether history needs cleaning is a SEPARATE decision. Do NOT rewrite history without explicit approval. No tokens, credentials, .env, or profile.json were ever committed.
+- Test fixtures still use a real school domain (drew.edu); move them to example.edu.
+- Hardcoded leftovers to move into the profile: PowerSchool and Classroom URLs, classifier regexes tied to one school. (The Groq prompt no longer names colleges or an employer.)
 - classroom_scraper.filter_impactful_missing had a bug where `skipped += 1; continue` sat outside the inner `if` (any missing item with a quarter was dropped). Verify whether it was fixed.
 - Duplicate logic: Google SSO login exists in two scrapers (Gmail imports it from the classroom scraper); category weights were duplicated across three files before the profile refactor.
 - tasks table lacks a UNIQUE constraint, so `INSERT OR IGNORE` from Gmail does not dedupe.

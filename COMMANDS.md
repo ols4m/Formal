@@ -1,6 +1,6 @@
 # Formal — Commands
 
-All commands run from `backend/`.
+All commands run from `backend/` (Codespace: `/workspaces/Formal/backend`; elsewhere: `cd backend` from the repo root).
 
 ```bash
 cd /workspaces/Formal/backend
@@ -8,23 +8,55 @@ cd /workspaces/Formal/backend
 
 ---
 
-## Run everything (grades + gmail)
+## Daily loop: Gmail → Agenda
 
-```bash
-python run.py
-```
-
----
-
-## Gmail only
+1. Pull new mail into the pool
 
 ```bash
 python apps/gmail/gmail_scraper.py
 ```
 
-Prompts:
-- `Fetch window — 1, 7, or 30 days?` — press Enter for 7
-- `Max emails? [all]` — press Enter for all, or type a number like `30`
+Prompts: `Fetch window in days (1-365)? [7]` and `Max emails? [all]` — press Enter for both.
+The run ends with `Pipeline:` (what was kept or dropped) and `Kept because:` counts.
+
+2. See the ranked Agenda (S/A/B tiers)
+
+```bash
+python apps/agenda/main.py
+```
+
+3. See everything open, including C/D tiers
+
+```bash
+python apps/agenda/main.py --all
+```
+
+4. Act on a row number from either view
+
+```bash
+python apps/agenda/main.py --done 3
+```
+
+```bash
+python apps/agenda/main.py --dismiss 3
+```
+
+Dismissing a sender's items 3 times (and never marking one done) makes the Gmail
+filter drop that sender's Promotions/Social/Updates/Forums mail.
+
+Scraper flags: `--rebuild` re-checks emails already in the pool and rebuilds the
+engagement cache; `--ai` labels mail with Groq (needs `GROQ_API_KEY` in `.env`).
+
+---
+
+## Run everything (legacy)
+
+`run.py` also re-runs the paused school scrapers (PowerSchool, Classroom), which
+ask for a school password and rewrite `output/*.json`. Use the daily loop above instead.
+
+```bash
+python run.py
+```
 
 ---
 
@@ -91,12 +123,13 @@ pip install -r apps/gradebook/requirements.txt
 | File | What's in it |
 |------|--------------|
 | `output/emails.json` | Current run — resets every scrape |
-| `output/emails_history.json` | All emails ever scanned, no duplicates |
+| `output/emails_history.json` | All emails ever scanned, no duplicates (feeds sender frequency) |
+| `output/engagement_cache_*.json` | Per-account sender engagement, reused for 7 days |
 | `output/assignments.json` | Current assignments from PowerSchool |
 | `output/missing.json` | All missing assignments |
 | `output/missing_impactful.json` | Missing assignments sorted by priority score |
 | `grades.json` | Raw grades from PowerSchool |
-| `formal.db` | SQLite — tasks, grades, assignments |
+| `formal.db` | SQLite — items pool, sender_reputation, legacy tasks/grades/assignments |
 
 ---
 
